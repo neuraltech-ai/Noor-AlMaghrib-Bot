@@ -58,13 +58,13 @@
     <div class="flex items-center gap-2">
       <div class="w-9 h-9 rounded-xl gold-gradient flex items-center justify-center text-emerald-950 font-bold text-lg shadow-lg">🕌</div>
       <div>
-        <h1 class="text-sm font-extrabold text-amber-300 leading-tight">نور المغرب</h1>
-        <p id="headerHijri" class="text-[10px] text-emerald-200/80">جاري التحميل...</p>
+        <h1 class="text-sm font-extrabold text-amber-300 leading-tight whitespace-nowrap">نور المغرب</h1>
+        <p id="headerHijri" class="text-[10px] text-emerald-200/80 whitespace-nowrap">جاري التحميل...</p>
       </div>
     </div>
     <div class="flex items-center gap-1.5">
-      <button onclick="openInstallModal()" class="gold-gradient text-emerald-950 px-2.5 py-1.5 rounded-full text-[11px] font-extrabold shadow">
-        📲 تثبيت التطبيق
+      <button id="headerInstallBtn" onclick="openInstallModal()" class="gold-gradient text-emerald-950 px-2.5 py-1 rounded-full text-[11px] font-extrabold shadow whitespace-nowrap">
+        📲 تثبيت
       </button>
       <button onclick="openShareModal()" class="bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/30 px-2 py-1.5 rounded-full text-[11px] font-bold text-amber-200 transition">
         📤
@@ -415,6 +415,21 @@
       navigator.serviceWorker.register('/sw.js').catch(() => {});
     }
     let deferredInstallPrompt = null;
+    function checkStandaloneMode() {
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+        || window.navigator.standalone === true
+        || localStorage.getItem('noor_pwa_installed') === '1';
+      if (isStandalone) {
+        document.getElementById('headerInstallBtn')?.classList.add('hidden');
+      }
+    }
+    window.addEventListener('DOMContentLoaded', checkStandaloneMode);
+    window.matchMedia('(display-mode: standalone)').addEventListener('change', checkStandaloneMode);
+    window.addEventListener('appinstalled', () => {
+      localStorage.setItem('noor_pwa_installed', '1');
+      document.getElementById('headerInstallBtn')?.classList.add('hidden');
+      closeInstallModal();
+    });
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredInstallPrompt = e;
