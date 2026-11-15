@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>نور المغرب — المواقيت والأذكار</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --emerald-deep: #04241c;
+      --emerald-card: #083328;
+      --gold: #d4af37;
+      --gold-soft: #f3dc8a;
+    }
+    body {
+      font-family: 'Cairo', sans-serif;
+      background: radial-gradient(circle at top, #0a3d30 0%, #031914 70%);
+      color: #f4f7f5;
+      min-height: 100vh;
+      padding-bottom: 84px;
+    }
+    .font-quran { font-family: 'Amiri', serif; }
+    .glass-card {
+      background: rgba(8, 51, 40, 0.72);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(212, 175, 55, 0.22);
+    }
+    .gold-gradient {
+      background: linear-gradient(135deg, #d4af37 0%, #f3dc8a 50%, #b88a1e 100%);
+    }
+    .islamic-pattern {
+      background-image: radial-gradient(rgba(212, 175, 55, 0.08) 1px, transparent 1px);
+      background-size: 18px 18px;
+    }
+    .tab-active {
+      color: #f3dc8a;
+      border-top: 2px solid #d4af37;
+    }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-thumb { background: rgba(212,175,55,0.4); border-radius: 4px; }
+  </style>
+</head>
+<body class="islamic-pattern">
+
+  <!-- Top Header -->
+  <header class="sticky top-0 z-30 glass-card border-b border-amber-500/20 px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-2.5">
+      <div class="w-9 h-9 rounded-xl gold-gradient flex items-center justify-center text-emerald-950 font-bold text-lg shadow-lg">🕌</div>
+      <div>
+        <h1 class="text-base font-extrabold text-amber-300 leading-tight">نور المغرب</h1>
+        <p id="headerHijri" class="text-[11px] text-emerald-200/80">جاري التحميل...</p>
+      </div>
+    </div>
+    <button onclick="openCityModal()" class="flex items-center gap-1.5 bg-emerald-900/80 hover:bg-emerald-800 border border-amber-400/30 px-3 py-1.5 rounded-full text-xs font-semibold text-amber-200 transition">
+      <span>📍</span>
+      <span id="currentCityName">وجدة</span>
+    </button>
+  </header>
+
+  <main class="max-w-2xl mx-auto px-3.5 pt-4 space-y-4">
+
+    <!-- Hero Countdown Card -->
+    <section class="relative overflow-hidden rounded-2xl p-5 glass-card shadow-2xl border border-amber-400/30">
+      <div class="flex justify-between items-start">
+        <div>
+          <span class="text-xs text-amber-300/90 font-semibold">الصلاة القادمة</span>
+          <h2 id="nextPrayerName" class="text-2xl font-extrabold text-white mt-0.5">--</h2>
+          <p id="nextPrayerTime" class="text-sm text-emerald-200/80">الساعة --:--</p>
+        </div>
+        <div class="text-left">
+          <span class="text-[11px] text-emerald-200/70 block">الوقت المتبقي</span>
+          <div id="countdownTimer" class="text-2xl font-extrabold text-amber-300 font-mono tracking-wider mt-0.5">--:--:--</div>
+        </div>
+      </div>
+      <div id="dailyAyahBox" class="mt-4 pt-3 border-t border-amber-400/15 text-center">
+        <p id="dailyAyahText" class="font-quran text-lg text-amber-100 leading-relaxed">﴿أَلَا بِذِكْرِ اللَّهِ تَطْمَئِنُّ الْقُلُوبُ﴾</p>
+        <span id="dailyAyahRef" class="text-[11px] text-emerald-300/75">سورة الرعد: 28</span>
+      </div>
+    </section>
+
+    <!-- TAB 1: PRAYER TIMES & MONTHLY -->
+    <section id="tab-prayers" class="space-y-4">
+      <!-- Today Grid -->
+      <div class="grid grid-cols-3 gap-2.5" id="todayPrayersGrid"></div>
+
+      <!-- Monthly Schedule -->
+      <div class="glass-card rounded-2xl p-4">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h3 class="text-sm font-bold text-amber-300">📅 الحصة الشهرية لمواقيت الصلاة</h3>
+            <p id="monthlySubtitle" class="text-[11px] text-emerald-200/70">وزارة الأوقاف والشؤون الإسلامية</p>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <select id="monthSelect" onchange="loadMonthly()" class="bg-emerald-950/90 border border-amber-400/30 rounded-lg px-2 py-1 text-xs text-amber-200">
+              <option value="1">يناير</option><option value="2">فبراير</option><option value="3">مارس</option>
+              <option value="4">أبريل</option><option value="5">ماي</option><option value="6">يونيو</option>
+              <option value="7">يوليوز</option><option value="8">غشت</option><option value="9">شتنبر</option>
+              <option value="10">أكتوبر</option><option value="11">نونبر</option><option value="12">دجنبر</option>
+            </select>
+            <button onclick="window.print()" class="bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 px-2.5 py-1 rounded-lg text-xs border border-amber-400/30">🖨 طباعة</button>
+          </div>
+        </div>
+        <div class="overflow-x-auto max-h-80 overflow-y-auto rounded-xl border border-emerald-800/60">
+          <table class="w-full text-center text-xs">
+            <thead class="bg-emerald-950/90 text-amber-300 sticky top-0">
+              <tr>
+                <th class="py-2 px-1.5">اليوم</th>
+                <th class="py-2 px-1">هجري</th>
+                <th class="py-2 px-1">الفجر</th>
+                <th class="py-2 px-1">الظهر</th>
+                <th class="py-2 px-1">العصر</th>
+                <th class="py-2 px-1">المغرب</th>
+                <th class="py-2 px-1">العشاء</th>
+              </tr>
+            </thead>
+            <tbody id="monthlyTableBody" class="divide-y divide-emerald-800/40"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: ADHKAR & DUAS -->
+    <section id="tab-adhkar" class="hidden space-y-4">
+      <div class="flex gap-2 overflow-x-auto pb-1" id="adhkarCategoryPills"></div>
+      <div id="adhkarCardsList" class="space-y-3"></div>
+      <div class="glass-card rounded-2xl p-4 space-y-3">
+        <h3 class="text-sm font-bold text-amber-300">🤲 أدعية مختارة من الكتاب والسنة</h3>
+        <div id="duasList" class="space-y-2.5"></div>
+      </div>
+    </section>
+
+    <!-- TAB 3: TASBIH, QIBLA & ASMA -->
+    <section id="tab-tools" class="hidden space-y-4">
+      <!-- Digital Tasbih -->
+      <div class="glass-card rounded-2xl p-5 text-center space-y-4">
+        <div class="flex justify-between items-center">
+          <h3 class="text-sm font-bold text-amber-300">📿 المسبحة الإلكترونية</h3>
+          <button onclick="resetTasbih()" class="text-xs text-rose-300 hover:text-rose-200">تصفير</button>
+        </div>
+        <select id="tasbihSelect" onchange="changeTasbihPhrase()" class="w-full bg-emerald-950/90 border border-amber-400/30 rounded-xl px-3 py-2 text-sm text-amber-100 text-center">
+          <option>سُبْحَانَ اللَّهِ</option>
+          <option>الْحَمْدُ لِلَّهِ</option>
+          <option>اللَّهُ أَكْبَرُ</option>
+          <option>لَا إِلَهَ إِلَّا اللَّهُ</option>
+          <option>أَسْتَغْفِرُ اللَّهَ الْعَظِيمَ</option>
+          <option>اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ</option>
+        </select>
+        <button onclick="tapTasbih()" class="w-36 h-36 mx-auto rounded-full gold-gradient text-emerald-950 font-extrabold text-4xl shadow-2xl active:scale-95 transition flex flex-col items-center justify-center">
+          <span id="tasbihCounter">0</span>
+          <span class="text-[11px] font-semibold mt-1">اضغط للتسبيح</span>
+        </button>
+      </div>
+
+      <!-- Qibla Card -->
+      <div class="glass-card rounded-2xl p-5 flex items-center justify-between">
+        <div>
+          <h3 class="text-sm font-bold text-amber-300">🧭 اتجاه القبلة</h3>
+          <p id="qiblaCityText" class="text-xs text-emerald-200/80 mt-1">مدينة وجدة</p>
+          <p id="qiblaAngleText" class="text-xl font-extrabold text-white mt-1">--°</p>
+          <p id="qiblaDirText" class="text-xs text-amber-200/90">--</p>
+        </div>
+        <div class="w-24 h-24 rounded-full border-2 border-amber-400/40 bg-emerald-950/80 relative flex items-center justify-center">
+          <span class="absolute top-1 text-[10px] text-emerald-300">ش</span>
+          <div id="qiblaNeedle" class="text-2xl transition-transform duration-500">🕋</div>
+        </div>
+      </div>
+
+      <!-- Quran Radio -->
+      <div class="glass-card rounded-2xl p-4 space-y-2.5">
+        <h3 class="text-sm font-bold text-amber-300">📻 إذاعات القرآن الكريم</h3>
+        <div id="radioList" class="space-y-2"></div>
+        <audio id="radioPlayer" controls class="w-full h-9 hidden mt-2"></audio>
+      </div>
+    </section>
+
+    <!-- TAB 4: ALARMS & SETTINGS -->
+    <section id="tab-settings" class="hidden space-y-4">
+      <div class="glass-card rounded-2xl p-4 space-y-4">
+        <h3 class="text-sm font-bold text-amber-300">🔔 إعدادات منبه الصلاة والتنبيهات</h3>
+        <label class="flex items-center justify-between py-2 border-b border-emerald-800/50">
+          <span class="text-sm">تفعيل منبه الأذان</span>
+          <input type="checkbox" id="setAlerts" onchange="saveSettings()" class="w-5 h-5 accent-amber-400" checked />
+        </label>
+        <label class="flex items-center justify-between py-2 border-b border-emerald-800/50">
+          <span class="text-sm">تذكير قبل الأذان (10 دقائق)</span>
+          <input type="checkbox" id="setPreAlert" onchange="saveSettings()" class="w-5 h-5 accent-amber-400" checked />
+        </label>
+        <label class="flex items-center justify-between py-2 border-b border-emerald-800/50">
+          <span class="text-sm">تذكير أذكار الصباح والمساء</span>
+          <input type="checkbox" id="setAdhkar" onchange="saveSettings()" class="w-5 h-5 accent-amber-400" checked />
+        </label>
+        <label class="flex items-center justify-between py-2">
+          <span class="text-sm">تذكير سورة الكهف (يوم الجمعة)</span>
+          <input type="checkbox" id="setKahf" onchange="saveSettings()" class="w-5 h-5 accent-amber-400" checked />
+        </label>
+        <p id="settingsSavedMsg" class="text-xs text-emerald-300 hidden">✅ تم حفظ الإعدادات ومزامنتها مع البوت</p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- City Picker Modal -->
+  <div id="cityModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="glass-card w-full max-w-md rounded-2xl p-4 space-y-3 max-h-[80vh] flex flex-col">
+      <div class="flex justify-between items-center">
+        <h3 class="font-bold text-amber-300">📍 اختر مدينتك المغربية</h3>
+        <button onclick="closeCityModal()" class="text-emerald-200 text-lg">✕</button>
+      </div>
+      <input id="citySearchInput" oninput="filterCities()" type="text" placeholder="ابحث عن مدينة (وجدة، الرباط، مراكش...)"
+        class="w-full bg-emerald-950 border border-amber-400/30 rounded-xl px-3 py-2 text-sm text-white focus:outline-none" />
+      <div id="cityModalList" class="overflow-y-auto space-y-1.5 flex-1"></div>
+    </div>
+  </div>
+
+  <!-- Bottom Navigation -->
+  <nav class="fixed bottom-0 inset-x-0 z-40 glass-card border-t border-amber-500/20 flex justify-around text-xs">
+    <button onclick="switchTab('prayers')" id="nav-prayers" class="flex-1 py-2.5 flex flex-col items-center gap-0.5 tab-active">
+      <span>🕌</span><span>المواقيت</span>
+    </button>
+    <button onclick="switchTab('adhkar')" id="nav-adhkar" class="flex-1 py-2.5 flex flex-col items-center gap-0.5 text-emerald-200/70">
+      <span>📿</span><span>الأذكار</span>
+    </button>
+    <button onclick="switchTab('tools')" id="nav-tools" class="flex-1 py-2.5 flex flex-col items-center gap-0.5 text-emerald-200/70">
+      <span>🧭</span><span>المسبحة والقبلة</span>
+    </button>
+    <button onclick="switchTab('settings')" id="nav-settings" class="flex-1 py-2.5 flex flex-col items-center gap-0.5 text-emerald-200/70">
+      <span>🔔</span><span>المنبه</span>
+    </button>
+  </nav>
+
+  <script>
+    const tg = window.Telegram?.WebApp;
+    if (tg) { tg.ready(); tg.expand(); }
+    const urlParams = new URLSearchParams(window.location.search);
+    const chatId = urlParams.get('chat_id') || tg?.initDataUnsafe?.user?.id || '';
+
+    let currentCity = localStorage.getItem('noor_city') || 'oujda';
+    let allCities = [];
+    let contentData = {};
+    let todayTimings = {};
+    let tasbihCount = parseInt(localStorage.getItem('noor_tasbih') || '0', 10);
+
+    const PRAYER_LABELS = [
+      { key: 'Fajr', name: 'الفجر', icon: '🌌' },
+      { key: 'Sunrise', name: 'الشروق', icon: '🌅' },
+      { key: 'Dhuhr', name: 'الظهر', icon: '☀️' },
+      { key: 'Asr', name: 'العصر', icon: '🌤' },
+      { key: 'Maghrib', name: 'المغرب', icon: '🌇' },
+      { key: 'Isha', name: 'العشاء', icon: '🌙' },
+    ];
+
+    async function initApp() {
+      document.getElementById('tasbihCounter').innerText = tasbihCount;
+      document.getElementById('monthSelect').value = new Date().getMonth() + 1;
+
+      const [citiesRes, contentRes] = await Promise.all([
+        fetch('/api/cities').then(r => r.json()),
+        fetch('/api/content').then(r => r.json())
+      ]);
+      allCities = citiesRes.cities || [];
+      contentData = contentRes;
+
+      if (chatId) {
+        const uRes = await fetch(`/api/user/settings?chat_id=${chatId}`).then(r => r.json());
+        if (uRes.user) {
+          currentCity = uRes.user.city_id || currentCity;
+          document.getElementById('setAlerts').checked = !!uRes.user.alerts_enabled;
+          document.getElementById('setPreAlert').checked = (uRes.user.pre_alert_mins || 0) > 0;
+          document.getElementById('setAdhkar').checked = !!uRes.user.adhkar_alerts;
+          document.getElementById('setKahf').checked = !!uRes.user.kahf_alert;
+        }
+      }
+
+      renderAdhkar('morning');
+      renderDuas();
+      renderRadios();
+      if (contentData.inspirations?.length) {
+        const insp = contentData.inspirations[new Date().getDate() % contentData.inspirations.length];
+        document.getElementById('dailyAyahText').innerText = insp.text;
+        document.getElementById('dailyAyahRef').innerText = insp.ref;
+      }
+
+      await loadCityData(currentCity);
+      setInterval(updateCountdown, 1000);
+      if (urlParams.get('tab')) switchTab(urlParams.get('tab'));
+    }
+
+    async function loadCityData(cityId) {
+      currentCity = cityId;
+      localStorage.setItem('noor_city', cityId);
+      const data = await fetch(`/api/prayer-times?city=${cityId}`).then(r => r.json());
+      document.getElementById('currentCityName').innerText = data.city.ar;
+      document.getElementById('qiblaCityText').innerText = `مدينة ${data.city.ar}`;
+      document.getElementById('qiblaAngleText').innerText = `${data.qibla_angle}°`;
+      document.getElementById('qiblaDirText').innerText = data.qibla_dir;
+      document.getElementById('qiblaNeedle').style.transform = `rotate(${data.qibla_angle}deg)`;
+
+      if (data.today) {
+        todayTimings = data.today.timings;
+        document.getElementById('headerHijri').innerText =
+          `${data.today.weekday_ar} ${data.today.hijri_day} ${data.today.hijri_month} ${data.today.hijri_year} هـ`;
+        renderTodayGrid(data.today.timings);
+        updateCountdown();
+      }
+      renderMonthlyTable(data.monthly || []);
+    }
+
+    async function loadMonthly() {
+      const m = document.getElementById('monthSelect').value;
+      const y = new Date().getFullYear();
+      const data = await fetch(`/api/monthly?city=${currentCity}&year=${y}&month=${m}`).then(r => r.json());
+      renderMonthlyTable(data.days || []);
+    }
+
+    function renderTodayGrid(timings) {
+      const grid = document.getElementById('todayPrayersGrid');
+      grid.innerHTML = PRAYER_LABELS.map(p => `
+        <div class="glass-card rounded-xl p-3 text-center">
+          <div class="text-lg">${p.icon}</div>
+          <div class="text-xs text-emerald-200/80 mt-0.5">${p.name}</div>
+          <div class="text-base font-extrabold text-amber-300 font-mono mt-0.5">${timings[p.key] || '--:--'}</div>
+        </div>
+      `).join('');
+    }
+
+    function renderMonthlyTable(days) {
+      const todayNum = new Date().getDate();
+      const selMonth = parseInt(document.getElementById('monthSelect').value, 10);
+      const isCurMonth = selMonth === (new Date().getMonth() + 1);
+      document.getElementById('monthlyTableBody').innerHTML = days.map(d => {
+        const isToday = isCurMonth && d.day === todayNum;
+        return `
+          <tr class="${isToday ? 'bg-amber-500/20 font-bold text-amber-200' : 'hover:bg-emerald-900/30'}">
+            <td class="py-1.5 px-1.5">${d.day}</td>
+            <td class="py-1.5 px-1 text-emerald-200/80">${d.hijri_day} ${d.hijri_month}</td>
+            <td class="py-1.5 px-1 font-mono">${d.timings.Fajr}</td>
+            <td class="py-1.5 px-1 font-mono">${d.timings.Dhuhr}</td>
+            <td class="py-1.5 px-1 font-mono">${d.timings.Asr}</td>
+            <td class="py-1.5 px-1 font-mono">${d.timings.Maghrib}</td>
+            <td class="py-1.5 px-1 font-mono">${d.timings.Isha}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function updateCountdown() {
+      if (!todayTimings.Fajr) return;
+      const now = new Date();
+      let next = null;
+      for (const p of PRAYER_LABELS) {
+        const t = todayTimings[p.key];
+        if (!t || !t.includes(':')) continue;
+        const [hh, mm] = t.split(':').map(Number);
+        const dt = new Date(now);
+        dt.setHours(hh, mm, 0, 0);
+        if (dt > now) { next = { ...p, time: t, dt }; break; }
+      }
+      if (!next) {
+        const [hh, mm] = todayTimings.Fajr.split(':').map(Number);
+        const dt = new Date(now);
+        dt.setDate(dt.getDate() + 1);
+        dt.setHours(hh, mm, 0, 0);
+        next = { ...PRAYER_LABELS[0], time: todayTimings.Fajr, dt };
+      }
+      const diff = Math.max(0, Math.floor((next.dt - now) / 1000));
+      const h = String(Math.floor(diff / 3600)).padStart(2, '0');
+      const m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
+      const s = String(diff % 60).padStart(2, '0');
+      document.getElementById('nextPrayerName').innerText = `${next.icon} ${next.name}`;
+      document.getElementById('nextPrayerTime').innerText = `الساعة ${next.time}`;
+      document.getElementById('countdownTimer').innerText = `${h}:${m}:${s}`;
+    }
+
+    function renderAdhkar(catKey) {
+      const cats = contentData.adhkar || {};
+      document.getElementById('adhkarCategoryPills').innerHTML = Object.entries(cats).map(([k, v]) => `
+        <button onclick="renderAdhkar('${k}')" class="whitespace-nowrap px-3.5 py-1.5 rounded-full text-xs font-bold border ${k === catKey ? 'gold-gradient text-emerald-950 border-amber-300' : 'glass-card text-amber-200 border-amber-400/20'}">
+          ${v.icon} ${v.title}
+        </button>
+      `).join('');
+
+      const items = cats[catKey]?.items || [];
+      document.getElementById('adhkarCardsList').innerHTML = items.map((item, i) => `
+        <div onclick="decrementDhikr(this)" data-rem="${item.count}" class="glass-card rounded-2xl p-4 space-y-2 cursor-pointer active:scale-[0.99] transition">
+          <p class="font-quran text-lg leading-loose text-white">${item.text}</p>
+          <div class="flex items-center justify-between pt-2 border-t border-emerald-800/50">
+            <span class="text-[11px] text-emerald-200/75">${item.fadl}</span>
+            <span class="dhikr-badge px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 text-xs font-bold border border-amber-400/30">المتبقي: ${item.count}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function decrementDhikr(el) {
+      let rem = parseInt(el.dataset.rem, 10);
+      if (rem <= 0) return;
+      rem -= 1;
+      el.dataset.rem = rem;
+      if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+      const badge = el.querySelector('.dhikr-badge');
+      if (rem === 0) {
+        badge.innerText = '✅ تم';
+        el.classList.add('opacity-55');
+      } else {
+        badge.innerText = `المتبقي: ${rem}`;
+      }
+    }
+
+    function renderDuas() {
+      const list = contentData.duas || [];
+      document.getElementById('duasList').innerHTML = list.map(cat => `
+        <div class="bg-emerald-950/50 rounded-xl p-3 border border-emerald-800/50 space-y-1.5">
+          <div class="text-xs font-bold text-amber-300">${cat.icon} ${cat.category}</div>
+          ${cat.duas.map(d => `<p class="font-quran text-base text-emerald-50 leading-relaxed">• ${d}</p>`).join('')}
+        </div>
+      `).join('');
+    }
+
+    function renderRadios() {
+      const radios = contentData.radios || [];
+      document.getElementById('radioList').innerHTML = radios.map(r => `
+        <button onclick="playRadio('${r.url}')" class="w-full text-right px-3 py-2 rounded-xl bg-emerald-950/60 hover:bg-emerald-900/70 border border-amber-400/20 text-xs text-amber-100 flex justify-between items-center">
+          <span>${r.name}</span><span>▶️</span>
+        </button>
+      `).join('');
+    }
+
+    function playRadio(url) {
+      const p = document.getElementById('radioPlayer');
+      p.src = url;
+      p.classList.remove('hidden');
+      p.play().catch(() => {});
+    }
+
+    function tapTasbih() {
+      tasbihCount += 1;
+      localStorage.setItem('noor_tasbih', tasbihCount);
+      document.getElementById('tasbihCounter').innerText = tasbihCount;
+      if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+    }
+
+    function resetTasbih() {
+      tasbihCount = 0;
+      localStorage.setItem('noor_tasbih', '0');
+      document.getElementById('tasbihCounter').innerText = '0';
+    }
+
+    function changeTasbihPhrase() { resetTasbih(); }
+
+    function openCityModal() {
+      document.getElementById('cityModal').classList.remove('hidden');
+      document.getElementById('cityModal').classList.add('flex');
+      filterCities();
+    }
+    function closeCityModal() {
+      document.getElementById('cityModal').classList.add('hidden');
+      document.getElementById('cityModal').classList.remove('flex');
+    }
+    function filterCities() {
+      const q = document.getElementById('citySearchInput').value.trim().toLowerCase();
+      const filtered = allCities.filter(c => c.ar.includes(q) || c.en.toLowerCase().includes(q) || c.region.includes(q));
+      document.getElementById('cityModalList').innerHTML = filtered.map(c => `
+        <button onclick="selectCity('${c.id}')" class="w-full text-right px-3 py-2 rounded-xl bg-emerald-950/70 hover:bg-emerald-800/80 flex justify-between items-center text-sm">
+          <span class="font-semibold text-white">${c.ar}</span>
+          <span class="text-[11px] text-amber-300/80">${c.region}</span>
+        </button>
+      `).join('');
+    }
+    async function selectCity(cid) {
+      closeCityModal();
+      await loadCityData(cid);
+      if (chatId) {
+        fetch('/api/user/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, city_id: cid })
+        });
+      }
+    }
+
+    async function saveSettings() {
+      const payload = {
+        chat_id: chatId,
+        alerts_enabled: document.getElementById('setAlerts').checked ? 1 : 0,
+        pre_alert_mins: document.getElementById('setPreAlert').checked ? 10 : 0,
+        adhkar_alerts: document.getElementById('setAdhkar').checked ? 1 : 0,
+        kahf_alert: document.getElementById('setKahf').checked ? 1 : 0,
+      };
+      await fetch('/api/user/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const msg = document.getElementById('settingsSavedMsg');
+      msg.classList.remove('hidden');
+      setTimeout(() => msg.classList.add('hidden'), 2500);
+    }
+
+    function switchTab(tab) {
+      ['prayers', 'adhkar', 'tools', 'settings'].forEach(t => {
+        document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== tab);
+        const nav = document.getElementById(`nav-${t}`);
+        nav.classList.toggle('tab-active', t === tab);
+        nav.classList.toggle('text-emerald-200/70', t !== tab);
+      });
+    }
+
+    initApp();
+  </script>
+</body>
+</html>
