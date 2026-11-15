@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>نور المغرب — المواقيت والأذكار</title>
+  <title>نور المغرب — المواقيت ومصحف ورش</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -88,7 +88,6 @@
 
     <!-- TAB 1: PRAYER TIMES & MONTHLY -->
     <section id="tab-prayers" class="space-y-4">
-      <!-- Today Grid -->
       <div class="grid grid-cols-3 gap-2.5" id="todayPrayersGrid"></div>
 
       <!-- Adhan Audio Player Bar -->
@@ -96,7 +95,7 @@
         <div class="flex items-center gap-2">
           <span class="text-lg">🔊</span>
           <div>
-            <div class="text-xs font-bold text-amber-300">الاستماع للأذان المغربي / الحرم</div>
+            <div class="text-xs font-bold text-amber-300">الاستماع للأذان</div>
             <div class="text-[10px] text-emerald-200/75">صوت نقي خاشع بضغطة واحدة</div>
           </div>
         </div>
@@ -145,7 +144,41 @@
       </div>
     </section>
 
-    <!-- TAB 2: ADHKAR & DUAS -->
+    <!-- TAB 2: MUSHAF WARSH & WARSH RADIOS -->
+    <section id="tab-quran" class="hidden space-y-4">
+      <!-- Interactive Warsh Mushaf Reader + Omar Al-Kazabri Audio -->
+      <div class="glass-card rounded-2xl p-4 space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 class="text-sm font-bold text-amber-300">📖 المصحف المحمدي — رواية ورش عن نافع</h3>
+            <p class="text-[11px] text-emerald-200/75">قراءة نصية برسم ورش مع تلاوة الشيخ عمر القزابري</p>
+          </div>
+          <select id="surahSelect" onchange="loadWarshSurah(this.value)" class="bg-emerald-950 border border-amber-400/40 rounded-xl px-3 py-1.5 text-xs text-amber-200 font-bold"></select>
+        </div>
+
+        <!-- Surah Audio Bar (Omar Al-Kazabri - Warsh) -->
+        <div class="bg-emerald-950/70 rounded-xl p-2.5 border border-amber-400/20 space-y-1.5">
+          <div class="flex items-center justify-between text-xs">
+            <span id="surahAudioLabel" class="text-amber-200 font-semibold">🎧 تلاوة سورة الفاتحة — الشيخ عمر القزابري (ورش)</span>
+          </div>
+          <audio id="warshSurahPlayer" controls class="w-full h-9"></audio>
+        </div>
+
+        <!-- Warsh Verses Box -->
+        <div id="warshVersesContainer" class="bg-emerald-950/60 border border-amber-400/25 rounded-2xl p-4 max-h-96 overflow-y-auto font-quran text-xl leading-loose text-amber-50 text-justify">
+          جاري تحميل آيات السورة برواية ورش عن نافع...
+        </div>
+      </div>
+
+      <!-- 24/7 Warsh Quran Radios -->
+      <div class="glass-card rounded-2xl p-4 space-y-2.5">
+        <h3 class="text-sm font-bold text-amber-300">📻 إذاعات القرآن الكريم برواية ورش (24/7)</h3>
+        <div id="radioList" class="space-y-2"></div>
+        <audio id="radioPlayer" controls class="w-full h-9 hidden mt-2"></audio>
+      </div>
+    </section>
+
+    <!-- TAB 3: ADHKAR & DUAS -->
     <section id="tab-adhkar" class="hidden space-y-4">
       <div class="flex gap-2 overflow-x-auto pb-1" id="adhkarCategoryPills"></div>
       <div id="adhkarCardsList" class="space-y-3"></div>
@@ -155,9 +188,8 @@
       </div>
     </section>
 
-    <!-- TAB 3: TASBIH, QIBLA & ASMA -->
+    <!-- TAB 4: TASBIH, QIBLA & ASMA -->
     <section id="tab-tools" class="hidden space-y-4">
-      <!-- Digital Tasbih -->
       <div class="glass-card rounded-2xl p-5 text-center space-y-4">
         <div class="flex justify-between items-center">
           <h3 class="text-sm font-bold text-amber-300">📿 المسبحة الإلكترونية</h3>
@@ -177,7 +209,6 @@
         </button>
       </div>
 
-      <!-- Qibla Card -->
       <div class="glass-card rounded-2xl p-5 flex items-center justify-between">
         <div>
           <h3 class="text-sm font-bold text-amber-300">🧭 اتجاه القبلة</h3>
@@ -191,35 +222,26 @@
         </div>
       </div>
 
-      <!-- Quran Radio -->
-      <div class="glass-card rounded-2xl p-4 space-y-2.5">
-        <h3 class="text-sm font-bold text-amber-300">📻 إذاعات القرآن الكريم</h3>
-        <div id="radioList" class="space-y-2"></div>
-        <audio id="radioPlayer" controls class="w-full h-9 hidden mt-2"></audio>
-      </div>
-
-      <!-- Asma Al-Husna Grid -->
       <div class="glass-card rounded-2xl p-4 space-y-3">
         <h3 class="text-sm font-bold text-amber-300">✨ أسماء الله الحسنى ومعانيها</h3>
         <div id="asmaGrid" class="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-1"></div>
       </div>
     </section>
 
-    <!-- TAB 4: ALARMS, KHATMA & SETTINGS -->
+    <!-- TAB 5: ALARMS & KHATMA -->
     <section id="tab-settings" class="hidden space-y-4">
-      <!-- Khatma Tracker -->
       <div class="glass-card rounded-2xl p-4 space-y-3">
         <div class="flex justify-between items-center">
-          <h3 class="text-sm font-bold text-amber-300">📖 متابعة الورد القرآني (الختمة)</h3>
-          <span id="khatmaBadge" class="text-xs font-bold text-amber-200 bg-amber-500/20 px-2.5 py-0.5 rounded-full">الجزء 1 / 30</span>
+          <h3 class="text-sm font-bold text-amber-300">📖 متابعة الورد القرآني (الختمة برواية ورش)</h3>
+          <span id="khatmaBadge" class="text-xs font-bold text-amber-200 bg-amber-500/20 px-2.5 py-0.5 rounded-full">الحزب 1 / 60</span>
         </div>
         <div class="w-full bg-emerald-950 rounded-full h-2.5 overflow-hidden border border-amber-400/20">
-          <div id="khatmaBar" class="gold-gradient h-2.5 transition-all duration-300" style="width: 3.3%"></div>
+          <div id="khatmaBar" class="gold-gradient h-2.5 transition-all duration-300" style="width: 1.6%"></div>
         </div>
         <div class="flex justify-between items-center pt-1">
-          <button onclick="stepKhatma(-1)" class="px-3 py-1 rounded-lg bg-emerald-900/80 text-xs text-emerald-200 border border-amber-400/20">- جزء سابق</button>
-          <span class="text-[11px] text-emerald-200/80">سجّل تقدمك اليومي في الختمة</span>
-          <button onclick="stepKhatma(1)" class="px-3 py-1 rounded-lg gold-gradient text-xs text-emerald-950 font-bold">+ أتممت جزءاً</button>
+          <button onclick="stepKhatma(-1)" class="px-3 py-1 rounded-lg bg-emerald-900/80 text-xs text-emerald-200 border border-amber-400/20">- حزب سابق</button>
+          <span class="text-[11px] text-emerald-200/80">نظام الـ 60 حزباً المعتمد في المغرب</span>
+          <button onclick="stepKhatma(1)" class="px-3 py-1 rounded-lg gold-gradient text-xs text-emerald-950 font-bold">+ أتممت حزباً</button>
         </div>
       </div>
 
@@ -254,7 +276,7 @@
         <h3 class="font-bold text-amber-300 text-sm">📤 تقاسم البوت (صدقة جارية)</h3>
         <button onclick="closeShareModal()" class="text-emerald-200 text-lg">✕</button>
       </div>
-      <p class="text-xs text-emerald-100/80 leading-relaxed">شارك البوت مع أهلك وأصدقائك ليكون لك أجر كل من صلاها في وقتها أو قرأ ذكراً أو دعاءً.</p>
+      <p class="text-xs text-emerald-100/80 leading-relaxed">شارك البوت مع أهلك وأصدقائك ليكون لك أجر كل من صلاها في وقتها أو قرأ القرآن برواية ورش.</p>
       <div class="space-y-2 pt-1">
         <button onclick="shareViaTelegram()" class="w-full py-2.5 rounded-xl gold-gradient text-emerald-950 font-bold text-xs shadow">
           ✈️ مشاركة عبر تيليجرام
@@ -282,18 +304,21 @@
     </div>
   </div>
 
-  <!-- Bottom Navigation -->
-  <nav class="fixed bottom-0 inset-x-0 z-40 glass-card border-t border-amber-500/20 flex justify-around text-xs">
-    <button onclick="switchTab('prayers')" id="nav-prayers" class="flex-1 py-2.5 flex flex-col items-center gap-0.5 tab-active">
+  <!-- Bottom Navigation (5 Tabs) -->
+  <nav class="fixed bottom-0 inset-x-0 z-40 glass-card border-t border-amber-500/20 flex justify-around text-[11px]">
+    <button onclick="switchTab('prayers')" id="nav-prayers" class="flex-1 py-2 flex flex-col items-center gap-0.5 tab-active">
       <span>🕌</span><span>المواقيت</span>
     </button>
-    <button onclick="switchTab('adhkar')" id="nav-adhkar" class="flex-1 py-2.5 flex flex-col items-center gap-0.5 text-emerald-200/70">
+    <button onclick="switchTab('quran')" id="nav-quran" class="flex-1 py-2 flex flex-col items-center gap-0.5 text-emerald-200/70">
+      <span>📖</span><span>مصحف ورش</span>
+    </button>
+    <button onclick="switchTab('adhkar')" id="nav-adhkar" class="flex-1 py-2 flex flex-col items-center gap-0.5 text-emerald-200/70">
       <span>📿</span><span>الأذكار</span>
     </button>
-    <button onclick="switchTab('tools')" id="nav-tools" class="flex-1 py-2.5 flex flex-col items-center gap-0.5 text-emerald-200/70">
+    <button onclick="switchTab('tools')" id="nav-tools" class="flex-1 py-2 flex flex-col items-center gap-0.5 text-emerald-200/70">
       <span>🧭</span><span>المسبحة والقبلة</span>
     </button>
-    <button onclick="switchTab('settings')" id="nav-settings" class="flex-1 py-2.5 flex flex-col items-center gap-0.5 text-emerald-200/70">
+    <button onclick="switchTab('settings')" id="nav-settings" class="flex-1 py-2 flex flex-col items-center gap-0.5 text-emerald-200/70">
       <span>🔔</span><span>المنبه والورد</span>
     </button>
   </nav>
@@ -310,7 +335,7 @@
     let todayTimings = {};
     let botShareUrl = "{{ bot_share_url }}" || window.location.origin;
     let tasbihCount = parseInt(localStorage.getItem('noor_tasbih') || '0', 10);
-    let khatmaJuz = parseInt(localStorage.getItem('noor_khatma_juz') || '1', 10);
+    let khatmaHizb = parseInt(localStorage.getItem('noor_khatma_hizb') || '1', 10);
 
     const PRAYER_LABELS = [
       { key: 'Fajr', name: 'الفجر', icon: '🌌' },
@@ -344,10 +369,18 @@
         }
       }
 
+      // Populate Surahs dropdown
+      const surahs = contentData.surahs || [];
+      document.getElementById('surahSelect').innerHTML = surahs.map(s =>
+        `<option value="${s.number}">${s.number}. سورة ${s.name}</option>`
+      ).join('');
+
       renderAdhkar('morning');
       renderDuas();
       renderRadios();
       renderAsma();
+      loadWarshSurah(1);
+
       if (contentData.inspirations?.length) {
         const insp = contentData.inspirations[new Date().getDate() % contentData.inspirations.length];
         document.getElementById('dailyAyahText').innerText = insp.text;
@@ -357,6 +390,32 @@
       await loadCityData(currentCity);
       setInterval(updateCountdown, 1000);
       if (urlParams.get('tab')) switchTab(urlParams.get('tab'));
+    }
+
+    async function loadWarshSurah(snum) {
+      const box = document.getElementById('warshVersesContainer');
+      box.innerHTML = '⏳ جاري تحميل السورة برواية ورش عن نافع...';
+      try {
+        const data = await fetch(`/api/quran/warsh/${snum}`).then(r => r.json());
+        document.getElementById('surahAudioLabel').innerText =
+          `🎧 تلاوة سورة ${data.name} — ${data.reciter}`;
+        const player = document.getElementById('warshSurahPlayer');
+        player.src = data.audio_url;
+
+        if (!data.verses || !data.verses.length) {
+          box.innerHTML = '⚠️ تعذر تحميل الآيات حالياً.';
+          return;
+        }
+        const bismillah = (parseInt(snum, 10) !== 1 && parseInt(snum, 10) !== 9)
+          ? '<div class="text-center text-amber-300 font-bold mb-3">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div>'
+          : '';
+        const versesHtml = data.verses.map(v =>
+          `<span>${v.text} <span class="text-amber-300 text-base font-bold">﴿${v.verse}﴾</span> </span>`
+        ).join('');
+        box.innerHTML = bismillah + versesHtml;
+      } catch (e) {
+        box.innerHTML = '⚠️ تعذر الاتصال بالخادم.';
+      }
     }
 
     async function loadCityData(cityId) {
@@ -393,7 +452,6 @@
       const printUrl = `${window.location.origin}/print-monthly?city=${currentCity}&year=${y}&month=${m}`;
       const toast = document.getElementById('printToast');
 
-      // 1) If inside Telegram with chatId, also send the printable file directly in chat
       if (chatId) {
         fetch(`/print-monthly?city=${currentCity}&year=${y}&month=${m}&chat_id=${chatId}&send_tg=1`).catch(() => {});
         toast.innerText = '✅ تم إرسال ملف الحصة الشهرية الجاهز للطباعة إلى محادثة البوت، وجاري فتح صفحة الطباعة...';
@@ -401,7 +459,6 @@
         setTimeout(() => toast.classList.add('hidden'), 4500);
       }
 
-      // 2) Open in external system browser (Telegram WebView blocks window.print(), external browser prints cleanly)
       if (tg && tg.openLink) {
         tg.openLink(printUrl);
       } else {
@@ -548,13 +605,13 @@
     }
 
     function renderKhatma() {
-      document.getElementById('khatmaBadge').innerText = `الجزء ${khatmaJuz} / 30`;
-      document.getElementById('khatmaBar').style.width = `${(khatmaJuz / 30) * 100}%`;
+      document.getElementById('khatmaBadge').innerText = `الحزب ${khatmaHizb} / 60`;
+      document.getElementById('khatmaBar').style.width = `${(khatmaHizb / 60) * 100}%`;
     }
 
     function stepKhatma(delta) {
-      khatmaJuz = Math.max(1, Math.min(30, khatmaJuz + delta));
-      localStorage.setItem('noor_khatma_juz', khatmaJuz);
+      khatmaHizb = Math.max(1, Math.min(60, khatmaHizb + delta));
+      localStorage.setItem('noor_khatma_hizb', khatmaHizb);
       renderKhatma();
     }
 
@@ -589,14 +646,14 @@
       document.getElementById('shareModal').classList.remove('flex');
     }
     function shareViaTelegram() {
-      const text = encodeURIComponent('🌿 بوت نور المغرب الإسلامي: مواقيت الصلاة الرسمية لكل المدن المغربية، الحصة الشهرية، منبه الأذان، الأذكار، الأدعية، والقبلة:');
+      const text = encodeURIComponent('🌿 بوت نور المغرب الإسلامي: مواقيت الصلاة الرسمية لكل المدن المغربية، المصحف برواية ورش عن نافع، الحصة الشهرية، منبه الأذان، والأذكار:');
       const url = encodeURIComponent(botShareUrl);
       const full = `https://t.me/share/url?url=${url}&text=${text}`;
       if (tg && tg.openTelegramLink) tg.openTelegramLink(full);
       else window.open(full, '_blank');
     }
     function shareViaWhatsApp() {
-      const msg = encodeURIComponent(`🌿 بوت نور المغرب الإسلامي: مواقيت الصلاة الرسمية لكل المدن المغربية، الحصة الشهرية، منبه الأذان، الأذكار، والقبلة:\n${botShareUrl}`);
+      const msg = encodeURIComponent(`🌿 بوت نور المغرب الإسلامي: مواقيت الصلاة الرسمية لكل المدن المغربية، المصحف برواية ورش عن نافع، الحصة الشهرية، منبه الأذان، والأذكار:\n${botShareUrl}`);
       const wa = `https://wa.me/?text=${msg}`;
       if (tg && tg.openLink) tg.openLink(wa);
       else window.open(wa, '_blank');
@@ -659,7 +716,7 @@
     }
 
     function switchTab(tab) {
-      ['prayers', 'adhkar', 'tools', 'settings'].forEach(t => {
+      ['prayers', 'quran', 'adhkar', 'tools', 'settings'].forEach(t => {
         document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== tab);
         const nav = document.getElementById(`nav-${t}`);
         nav.classList.toggle('tab-active', t === tab);

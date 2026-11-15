@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-Noor Al-Maghrib (نور المغرب) - Islamic Telegram Bot & Mini App
+Noor Al-Maghrib (نور المغرب) - Islamic Telegram Bot & Mini App (Moroccan Warsh Edition)
 24/7 Production Server for Render.com (Flask + pyTelegramBotAPI + SQLite + Scheduler)
-Official Moroccan Prayer Times via AlAdhan API (Method 21: Ministry of Habous & Islamic Affairs).
+Official Moroccan Prayer Times via AlAdhan API (Method 21: Ministry of Habous & Islamic Affairs)
+Full Quran Text & Audio in Riwayat Warsh A'n Nafi' (رواية ورش عن نافع).
 """
 
+import io
 import os
 import json
 import time
@@ -21,7 +23,14 @@ from telebot import types
 from flask import Flask, render_template, jsonify, request, Response
 
 from morocco_data import MOROCCO_CITIES, CITY_BY_ID, find_city, calculate_qibla, qibla_direction_ar
-from islamic_content import ADHKAR_DATA, DUAS_DATA, DAILY_INSPIRATIONS, ASMA_AL_HUSNA, QURAN_RADIOS
+from islamic_content import (
+    ADHKAR_DATA,
+    DUAS_DATA,
+    DAILY_INSPIRATIONS,
+    ASMA_AL_HUSNA,
+    QURAN_RADIOS,
+    SURAHS_LIST,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,8 +54,8 @@ if bot:
     except Exception:
         BOT_USERNAME = ""
 
-# In-memory cache: {(city_id, year, month): [day_dicts]}
 MONTH_CACHE = {}
+SURAH_WARSH_CACHE = {}
 CACHE_LOCK = threading.Lock()
 DB_LOCK = threading.Lock()
 
@@ -187,7 +196,7 @@ def mark_alert_sent(chat_id: int, alert_key: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Prayer Times Service (AlAdhan API Method 21 - Morocco)
+# Prayer Times Service & Warsh Quran Service
 # ---------------------------------------------------------------------------
 def clean_time(t_str: str) -> str:
     return t_str.split(" ")[0].strip() if t_str else "--:--"
@@ -243,6 +252,45 @@ def fetch_monthly_times(city_id: str, year: int, month: int) -> list:
     except Exception as e:
         logger.error("Failed to fetch AlAdhan monthly calendar for %s: %s", city_id, e)
         return []
+
+
+def fetch_warsh_surah(surah_num: int) -> dict:
+    """Fetch Surah verses in authentic Riwayat Warsh A'n Nafi' from jsDelivr CDN."""
+    surah_num = max(1, min(114, int(surah_num)))
+    with CACHE_LOCK:
+        if surah_num in SURAH_WARSH_CACHE:
+            return SURAH_WARSH_CACHE[surah_num]
+
+    url = f"https://cdn.jsdelivr.net/gh/fawazahmed0/quran-api@1/editions/ara-quranwarsh/{surah_num}.min.json"
+    s_name = dict(SURAHS_LIST).get(surah_num, f"سورة {surah_num}")
+    audio_kazabri = f"https://cdn.mp3quran.net/audio/omar-kazabri/r1/{surah_num:03d}.mp3"
+
+    try:
+        resp = requests.get(url, timeout=12)
+        resp.raise_for_status()
+        data = resp.json()
+        verses = data.get("chapter", [])
+        result = {
+            "number": surah_num,
+            "name": s_name,
+            "riwaya": "رواية ورش عن نافع",
+            "audio_url": audio_kazabri,
+            "reciter": "الشيخ عمر القزابري (برواية ورش)",
+            "verses": [{"verse": v.get("verse"), "text": v.get("text")} for v in verses],
+        }
+        with CACHE_LOCK:
+            SURAH_WARSH_CACHE[surah_num] = result
+        return result
+    except Exception as e:
+        logger.error("Failed to fetch Warsh Surah %s: %s", surah_num, e)
+        return {
+            "number": surah_num,
+            "name": s_name,
+            "riwaya": "رواية ورش عن نافع",
+            "audio_url": audio_kazabri,
+            "reciter": "الشيخ عمر القزابري (برواية ورش)",
+            "verses": [],
+        }
 
 
 def get_today_times(city_id: str) -> dict:
@@ -317,6 +365,10 @@ def main_menu_markup(chat_id: int = None):
         types.InlineKeyboardButton("📅 الحصة الشهرية", callback_data="month_1"),
     )
     kb.add(
+        types.InlineKeyboardButton("📖 المصحف (رواية ورش)", callback_data="warsh_menu_0"),
+        types.InlineKeyboardButton("📻 إذاعات ورش", callback_data="radio_menu"),
+    )
+    kb.add(
         types.InlineKeyboardButton("📿 الأذكار اليومية", callback_data="adhkar_menu"),
         types.InlineKeyboardButton("🤲 الأدعية المختارة", callback_data="duas_menu"),
     )
@@ -328,15 +380,12 @@ def main_menu_markup(chat_id: int = None):
         types.InlineKeyboardButton("🔔 منبه الصلاة", callback_data="alerts_menu"),
         types.InlineKeyboardButton("📍 تغيير المدينة", callback_data="cities_page_0"),
     )
-    kb.add(
-        types.InlineKeyboardButton("📻 إذاعة القرآن", callback_data="radio_menu"),
-        types.InlineKeyboardButton("🌟 آية وحديث", callback_data="daily_insp"),
-    )
     share_link = get_bot_share_url()
-    share_text = "🌿 بوت نور المغرب الإسلامي: مواقيت الصلاة الرسمية لكل المدن المغربية، الحصة الشهرية، منبه الأذان، الأذكار، الأدعية، والقبلة:"
+    share_text = "🌿 بوت نور المغرب الإسلامي: مواقيت الصلاة الرسمية لكل المدن المغربية، المصحف برواية ورش عن نافع، الحصة الشهرية، منبه الأذان، والأذكار:"
     tg_share = f"https://t.me/share/url?url={requests.utils.quote(share_link)}&text={requests.utils.quote(share_text)}"
     kb.add(
-        types.InlineKeyboardButton("📤 مشاركة البوت (صدقة جارية)", url=tg_share),
+        types.InlineKeyboardButton("🌟 آية وحديث", callback_data="daily_insp"),
+        types.InlineKeyboardButton("📤 مشاركة البوت", url=tg_share),
     )
     return kb
 
@@ -497,7 +546,7 @@ if bot:
         text = (
             "🌿 <b>أهلاً بك في بوت نور المغرب الإسلامي</b>\n"
             "رفيقك اليومي لمواقيت الصلاة الرسمية في كل المدن المغربية، "
-            "منبه الأذان، الأذكار، الأدعية، القبلة، والمسبحة الإلكترونية.\n\n"
+            "المصحف الشريف برواية ورش عن نافع، منبه الأذان، الأذكار، والقبلة.\n\n"
             + format_today_message(user)
         )
         bot.send_message(message.chat.id, text, reply_markup=main_menu_markup(message.chat.id))
@@ -553,9 +602,7 @@ if bot:
                 now = datetime.now(MOROCCO_TZ)
                 city = CITY_BY_ID.get(user["city_id"], CITY_BY_ID["oujda"])
                 html_str = build_printable_monthly_html(city["id"], now.year, now.month)
-                bio = html_str.encode("utf-8")
-                import io
-                doc = io.BytesIO(bio)
+                doc = io.BytesIO(html_str.encode("utf-8"))
                 doc.name = f"Imsakiya_{city['en']}_{now.year}_{now.month:02d}.html"
                 bot.answer_callback_query(call.id, "📥 جاري إرسال ملف الحصة الشهرية للطباعة...")
                 bot.send_document(
@@ -564,6 +611,66 @@ if bot:
                     caption=f"🖨 <b>الحصة الشهرية الجاهزة للطباعة — مدينة {city['ar']}</b>\nافتح الملف واضغط طباعة أو حفظ كـ PDF.",
                 )
                 return
+
+            elif data.startswith("warsh_menu_"):
+                page = int(data.split("_")[2])
+                per_page = 15
+                start = page * per_page
+                chunk = SURAHS_LIST[start : start + per_page]
+                kb = types.InlineKeyboardMarkup(row_width=3)
+                btns = [types.InlineKeyboardButton(f"{num}. {name}", callback_data=f"wsurah_{num}_0") for num, name in chunk]
+                kb.add(*btns)
+                nav = []
+                if page > 0:
+                    nav.append(types.InlineKeyboardButton("⬅️ السابق", callback_data=f"warsh_menu_{page - 1}"))
+                if start + per_page < len(SURAHS_LIST):
+                    nav.append(types.InlineKeyboardButton("التالي ➡️", callback_data=f"warsh_menu_{page + 1}"))
+                if nav:
+                    kb.add(*nav)
+                if WEBAPP_URL:
+                    kb.add(
+                        types.InlineKeyboardButton(
+                            "📖 فتح المصحف الكامل والصوتيات في التطبيق",
+                            web_app=types.WebAppInfo(url=f"{WEBAPP_URL}/?tab=quran"),
+                        )
+                    )
+                kb.add(types.InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="home"))
+                bot.edit_message_text(
+                    "📖 <b>المصحف الشريف برواية ورش عن نافع</b>\nاختر السورة لقراءتها أو الاستماع إليها بصوت الشيخ عمر القزابري:",
+                    chat_id,
+                    msg_id,
+                    reply_markup=kb,
+                )
+
+            elif data.startswith("wsurah_"):
+                _, snum_str, p_str = data.split("_")
+                snum = int(snum_str)
+                page = int(p_str)
+                sdata = fetch_warsh_surah(snum)
+                verses = sdata.get("verses", [])
+                per_p = 10
+                total_p = max(1, (len(verses) + per_p - 1) // per_p)
+                page = max(0, min(total_p - 1, page))
+                v_chunk = verses[page * per_p : (page + 1) * per_p]
+
+                body = " ".join(f"{v['text']} ﴿{v['verse']}﴾" for v in v_chunk)
+                text = (
+                    f"📖 <b>سورة {sdata['name']} — رواية ورش عن نافع</b> (صفحة {page + 1}/{total_p})\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"{body}\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"🎧 <a href=\"{sdata['audio_url']}\">استماع وتحميل بصوت الشيخ عمر القزابري (ورش)</a>"
+                )
+                kb = types.InlineKeyboardMarkup(row_width=2)
+                nav = []
+                if page > 0:
+                    nav.append(types.InlineKeyboardButton("⬅️ الآيات السابقة", callback_data=f"wsurah_{snum}_{page - 1}"))
+                if page < total_p - 1:
+                    nav.append(types.InlineKeyboardButton("الآيات التالية ➡️", callback_data=f"wsurah_{snum}_{page + 1}"))
+                if nav:
+                    kb.add(*nav)
+                kb.add(types.InlineKeyboardButton("🔙 فهرس سور مصحف ورش", callback_data=f"warsh_menu_{(snum - 1) // 15}"))
+                bot.edit_message_text(text, chat_id, msg_id, reply_markup=kb, disable_web_page_preview=True)
 
             elif data == "adhkar_menu":
                 kb = types.InlineKeyboardMarkup(row_width=2)
@@ -657,7 +764,7 @@ if bot:
                 bot.edit_message_text(text, chat_id, msg_id, reply_markup=kb)
 
             elif data == "radio_menu":
-                lines = ["📻 <b>إذاعات القرآن الكريم المباشرة:</b>\n"]
+                lines = ["📻 <b>إذاعات القرآن الكريم برواية ورش عن نافع (بث مباشر 24/7):</b>\n"]
                 for r in QURAN_RADIOS:
                     lines.append(f"• <a href=\"{r['url']}\">{r['name']}</a>")
                 kb = types.InlineKeyboardMarkup()
@@ -834,7 +941,7 @@ def scheduler_loop():
                             try:
                                 bot.send_message(
                                     chat_id,
-                                    "🕌 <b>جمعة مباركة!</b>\nلا تنسَ قراءة <b>سورة الكهف</b> والإكثار من الصلاة على النبي ﷺ.",
+                                    "🕌 <b>جمعة مباركة!</b>\nلا تنسَ قراءة <b>سورة الكهف</b> (برواية ورش عن نافع) والإكثار من الصلاة على النبي ﷺ.",
                                 )
                             except Exception:
                                 pass
@@ -881,7 +988,6 @@ def print_monthly():
     html_str = build_printable_monthly_html(city_id, year, month)
     if send_tg and chat_id and bot:
         try:
-            import io
             city = CITY_BY_ID.get(city_id, CITY_BY_ID["oujda"])
             doc = io.BytesIO(html_str.encode("utf-8"))
             doc.name = f"Imsakiya_{city['en']}_{year}_{month:02d}.html"
@@ -935,6 +1041,11 @@ def api_monthly():
     return jsonify({"city": CITY_BY_ID.get(city_id, CITY_BY_ID["oujda"]), "year": year, "month": month, "days": days})
 
 
+@app.route("/api/quran/warsh/<int:surah_num>")
+def api_quran_warsh(surah_num):
+    return jsonify(fetch_warsh_surah(surah_num))
+
+
 @app.route("/api/content")
 def api_content():
     return jsonify(
@@ -944,6 +1055,7 @@ def api_content():
             "inspirations": DAILY_INSPIRATIONS,
             "asma": ASMA_AL_HUSNA,
             "radios": QURAN_RADIOS,
+            "surahs": [{"number": n, "name": name} for n, name in SURAHS_LIST],
         }
     )
 
