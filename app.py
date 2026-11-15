@@ -467,8 +467,66 @@ def format_month_chunk(city_id: str, chunk_idx: int) -> tuple:
 
 
 
+# Pure-Python Arabic Contextual Shaper & RTL BiDi Reorderer (Zero C/Rust dependencies)
+_AR_FORMS = {
+    0x0621: (0xFE80, 0xFE80, 0xFE80, 0xFE80),  # ء
+    0x0622: (0xFE81, 0xFE82, 0xFE81, 0xFE82),  # آ
+    0x0623: (0xFE83, 0xFE84, 0xFE83, 0xFE84),  # أ
+    0x0624: (0xFE85, 0xFE86, 0xFE85, 0xFE86),  # ؤ
+    0x0625: (0xFE87, 0xFE88, 0xFE87, 0xFE88),  # إ
+    0x0626: (0xFE89, 0xFE8A, 0xFE8B, 0xFE8C),  # ئ
+    0x0627: (0xFE8D, 0xFE8E, 0xFE8D, 0xFE8E),  # ا
+    0x0628: (0xFE8F, 0xFE90, 0xFE91, 0xFE92),  # ب
+    0x0629: (0xFE93, 0xFE94, 0xFE93, 0xFE94),  # ة
+    0x062A: (0xFE95, 0xFE96, 0xFE97, 0xFE98),  # ت
+    0x062B: (0xFE99, 0xFE9A, 0xFE9B, 0xFE9C),  # ث
+    0x062C: (0xFE9D, 0xFE9E, 0xFE9F, 0xFEA0),  # ج
+    0x062D: (0xFEA1, 0xFEA2, 0xFEA3, 0xFEA4),  # ح
+    0x062E: (0xFEA5, 0xFEA6, 0xFEA7, 0xFEA8),  # خ
+    0x062F: (0xFEA9, 0xFEAA, 0xFEA9, 0xFEAA),  # د
+    0x0630: (0xFEAB, 0xFEAC, 0xFEAB, 0xFEAC),  # ذ
+    0x0631: (0xFEAD, 0xFEAE, 0xFEAD, 0xFEAE),  # ر
+    0x0632: (0xFEAF, 0xFEB0, 0xFEAF, 0xFEB0),  # ز
+    0x0633: (0xFEB1, 0xFEB2, 0xFEB3, 0xFEB4),  # س
+    0x0634: (0xFEB5, 0xFEB6, 0xFEB7, 0xFEB8),  # ش
+    0x0635: (0xFEB9, 0xFEBA, 0xFEBB, 0xFEBC),  # ص
+    0x0636: (0xFEBD, 0xFEBE, 0xFEBF, 0xFEC0),  # ض
+    0x0637: (0xFEC1, 0xFEC2, 0xFEC3, 0xFEC4),  # ط
+    0x0638: (0xFEC5, 0xFEC6, 0xFEC7, 0xFEC8),  # ظ
+    0x0639: (0xFEC9, 0xFECA, 0xFECB, 0xFECC),  # ع
+    0x063A: (0xFECD, 0xFECE, 0xFECF, 0xFED0),  # غ
+    0x0640: (0x0640, 0x0640, 0x0640, 0x0640),  # ـ
+    0x0641: (0xFED1, 0xFED2, 0xFED3, 0xFED4),  # ف
+    0x0642: (0xFED5, 0xFED6, 0xFED7, 0xFED8),  # ق
+    0x0643: (0xFED9, 0xFEDA, 0xFEDB, 0xFEDC),  # ك
+    0x0644: (0xFEDD, 0xFEDE, 0xFEDF, 0xFEE0),  # ل
+    0x0645: (0xFEE1, 0xFEE2, 0xFEE3, 0xFEE4),  # م
+    0x0646: (0xFEE5, 0xFEE6, 0xFEE7, 0xFEE8),  # ن
+    0x0647: (0xFEE9, 0xFEEA, 0xFEEB, 0xFEEC),  # ه
+    0x0648: (0xFEED, 0xFEEE, 0xFEED, 0xFEEE),  # و
+    0x0649: (0xFEEF, 0xFEF0, 0xFEEF, 0xFEF0),  # ى
+    0x064A: (0xFEF1, 0xFEF2, 0xFEF3, 0xFEF4),  # ي
+}
+_RIGHT_ONLY = {0x0621, 0x0622, 0x0623, 0x0624, 0x0625, 0x0627, 0x0629, 0x062F, 0x0630, 0x0631, 0x0632, 0x0648, 0x0649}
+_HARAKAT = set(range(0x064B, 0x065F)) | {0x0670}
+_LAM_ALEF = {
+    0x0622: (0xFEF5, 0xFEF6),
+    0x0623: (0xFEF7, 0xFEF8),
+    0x0625: (0xFEF9, 0xFEFA),
+    0x0627: (0xFEFB, 0xFEFC),
+}
+
+
+def _can_connect_left(ch_code: int) -> bool:
+    return (ch_code in _AR_FORMS) and (ch_code not in _RIGHT_ONLY) and (ch_code != 0x0621)
+
+
+def _can_connect_right(ch_code: int) -> bool:
+    return (ch_code in _AR_FORMS) and (ch_code != 0x0621)
+
+
 def shape_ar(text: str) -> str:
-    """Connect Arabic letters and apply RTL BiDi order on servers without libRqm."""
+    """Connect Arabic letters (including Lam-Alef ligatures) and reorder RTL runs for Pillow."""
     if not text:
         return ""
     try:
@@ -477,13 +535,75 @@ def shape_ar(text: str) -> str:
             return str(text)
     except Exception:
         pass
-    try:
-        import arabic_reshaper
-        from bidi.algorithm import get_display
-        reshaped = arabic_reshaper.reshape(str(text))
-        return get_display(reshaped)
-    except Exception:
-        return str(text)
+
+    # Strip harakat for clean tabular PDF rendering
+    chars = [c for c in str(text) if ord(c) not in _HARAKAT]
+    # 1. Contextual letter shaping + Lam-Alef ligature
+    shaped = []
+    i = 0
+    n = len(chars)
+    while i < n:
+        c = ord(chars[i])
+        prev_c = ord(chars[i - 1]) if i > 0 else 0
+        conn_prev = _can_connect_left(prev_c)
+
+        # Check Lam-Alef ligature
+        if c == 0x0644 and (i + 1 < n) and (ord(chars[i + 1]) in _LAM_ALEF):
+            alef_c = ord(chars[i + 1])
+            iso_lig, fin_lig = _LAM_ALEF[alef_c]
+            shaped.append(chr(fin_lig if conn_prev else iso_lig))
+            i += 2
+            continue
+
+        if c in _AR_FORMS:
+            next_c = ord(chars[i + 1]) if (i + 1 < n) else 0
+            conn_next = _can_connect_left(c) and _can_connect_right(next_c)
+            iso, fin, ini, med = _AR_FORMS[c]
+            if conn_prev and conn_next:
+                shaped.append(chr(med))
+            elif conn_prev and not conn_next:
+                shaped.append(chr(fin))
+            elif not conn_prev and conn_next:
+                shaped.append(chr(ini))
+            else:
+                shaped.append(chr(iso))
+        else:
+            shaped.append(chars[i])
+        i += 1
+
+    s_str = "".join(shaped)
+    # If string has no Arabic characters, return as-is
+    if not any((0x0600 <= ord(ch) <= 0x06FF) or (0xFE70 <= ord(ch) <= 0xFEFF) for ch in s_str):
+        return s_str
+
+    # 2. BiDi RTL line reordering: reverse character stream while keeping LTR digit/Latin runs intact
+    mirror = {"(": ")", ")": "(", "[": "]", "]": "["}
+    tokens = []
+    buf = []
+    buf_is_ltr = None
+    for ch in s_str:
+        code = ord(ch)
+        is_ltr = ("0" <= ch <= "9") or ("a" <= ch.lower() <= "z") or (ch in ":/.")
+        if buf_is_ltr is None:
+            buf_is_ltr = is_ltr
+            buf.append(ch)
+        elif is_ltr == buf_is_ltr:
+            buf.append(ch)
+        else:
+            tokens.append((buf_is_ltr, "".join(buf)))
+            buf = [ch]
+            buf_is_ltr = is_ltr
+    if buf:
+        tokens.append((buf_is_ltr, "".join(buf)))
+
+    out_parts = []
+    for is_ltr, tok in reversed(tokens):
+        if is_ltr:
+            out_parts.append(tok)
+        else:
+            rev_chars = [mirror.get(c, c) for c in reversed(tok)]
+            out_parts.append("".join(rev_chars))
+    return "".join(out_parts)
 
 
 def generate_single_page_a4_pdf(city_id: str, year: int, month: int) -> bytes:
