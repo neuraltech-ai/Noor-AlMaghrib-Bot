@@ -467,6 +467,25 @@ def format_month_chunk(city_id: str, chunk_idx: int) -> tuple:
 
 
 
+def shape_ar(text: str) -> str:
+    """Connect Arabic letters and apply RTL BiDi order on servers without libRqm."""
+    if not text:
+        return ""
+    try:
+        from PIL import features
+        if features.check("raqm"):
+            return str(text)
+    except Exception:
+        pass
+    try:
+        import arabic_reshaper
+        from bidi.algorithm import get_display
+        reshaped = arabic_reshaper.reshape(str(text))
+        return get_display(reshaped)
+    except Exception:
+        return str(text)
+
+
 def generate_single_page_a4_pdf(city_id: str, year: int, month: int) -> bytes:
     """Render a crisp 1-page A4 Portrait PDF (1240x1754 px @ 150 DPI) of the monthly timetable."""
     from PIL import Image, ImageDraw, ImageFont
@@ -493,12 +512,11 @@ def generate_single_page_a4_pdf(city_id: str, year: int, month: int) -> bytes:
 
     # Header Box
     draw.rounded_rectangle([40, 30, W - 40, 135], radius=14, fill=(4, 36, 28), outline=(212, 175, 55), width=3)
-    draw.text((W // 2, 62), f"الحصة الشهرية لمواقيت الصلاة — مدينة {city['ar']} ({city['region']})", fill=(243, 220, 138), font=f_title, anchor="mm")
+    draw.text((W // 2, 62), shape_ar(f"الحصة الشهرية لمواقيت الصلاة — مدينة {city['ar']} ({city['region']})"), fill=(243, 220, 138), font=f_title, anchor="mm")
     hijri_span = f"{days[0]['hijri_month']} {days[0]['hijri_year']} هـ" if days else ""
-    draw.text((W // 2, 105), f"شهر {m_name} {year} م  |  {hijri_span} — وزارة الأوقاف والشؤون الإسلامية بالمغرب", fill=(230, 245, 238), font=f_sub, anchor="mm")
+    draw.text((W // 2, 105), shape_ar(f"شهر {m_name} {year} م  |  {hijri_span} — وزارة الأوقاف والشؤون الإسلامية بالمغرب"), fill=(230, 245, 238), font=f_sub, anchor="mm")
 
     # Table Columns (Right-to-Left layout)
-    # Columns from Right to Left: اليوم | الأيام | هجري | الفجر | الشروق | الظهر | العصر | المغرب | العشاء
     col_Bounds = [
         (1110, 1200, "اليوم"),
         (980, 1110, "الأيام"),
@@ -516,7 +534,7 @@ def generate_single_page_a4_pdf(city_id: str, year: int, month: int) -> bytes:
     draw.rectangle([40, top_y, W - 40, top_y + th_h], fill=(8, 51, 40), outline=(4, 36, 28), width=2)
     for x1, x2, label in col_Bounds:
         cx = (x1 + x2) // 2
-        draw.text((cx, top_y + th_h // 2), label, fill=(243, 220, 138), font=f_th, anchor="mm")
+        draw.text((cx, top_y + th_h // 2), shape_ar(label), fill=(243, 220, 138), font=f_th, anchor="mm")
         draw.line([(x1, top_y), (x1, top_y + th_h)], fill=(212, 175, 55), width=1)
 
     row_h = 46
@@ -527,8 +545,8 @@ def generate_single_page_a4_pdf(city_id: str, year: int, month: int) -> bytes:
         t = d["timings"]
         vals = [
             str(d["day"]),
-            str(d["weekday_ar"]),
-            f"{d['hijri_day']} {d['hijri_month']}",
+            shape_ar(str(d["weekday_ar"])),
+            shape_ar(f"{d['hijri_day']} {d['hijri_month']}"),
             t["Fajr"],
             t["Sunrise"],
             t["Dhuhr"],
@@ -542,7 +560,7 @@ def generate_single_page_a4_pdf(city_id: str, year: int, month: int) -> bytes:
             draw.line([(x1, cur_y), (x1, cur_y + row_h)], fill=(203, 213, 225), width=1)
         cur_y += row_h
 
-    draw.text((W // 2, H - 30), "تطبيق وبوت نور المغرب الإسلامي — المواقيت الرسمية ومصحف رواية ورش عن نافع", fill=(100, 116, 139), font=f_td, anchor="mm")
+    draw.text((W // 2, H - 30), shape_ar("تطبيق وبوت نور المغرب الإسلامي — المواقيت الرسمية ومصحف رواية ورش عن نافع"), fill=(100, 116, 139), font=f_td, anchor="mm")
 
     out = io.BytesIO()
     img.save(out, format="PDF", resolution=150.0)
