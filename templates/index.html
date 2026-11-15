@@ -416,19 +416,23 @@
     }
     let deferredInstallPrompt = null;
     function checkStandaloneMode() {
-      const isStandalone = window.matchMedia('(display-mode: standalone)').matches
-        || window.navigator.standalone === true
-        || localStorage.getItem('noor_pwa_installed') === '1';
-      if (isStandalone) {
-        document.getElementById('headerInstallBtn')?.classList.add('hidden');
+      localStorage.removeItem('noor_pwa_installed');
+      const isStandaloneApp = window.matchMedia('(display-mode: standalone)').matches
+        || window.matchMedia('(display-mode: fullscreen)').matches
+        || window.navigator.standalone === true;
+      const btn = document.getElementById('headerInstallBtn');
+      if (!btn) return;
+      if (isStandaloneApp) {
+        btn.classList.add('hidden');
+      } else {
+        btn.classList.remove('hidden');
       }
     }
     window.addEventListener('DOMContentLoaded', checkStandaloneMode);
     window.matchMedia('(display-mode: standalone)').addEventListener('change', checkStandaloneMode);
     window.addEventListener('appinstalled', () => {
-      localStorage.setItem('noor_pwa_installed', '1');
-      document.getElementById('headerInstallBtn')?.classList.add('hidden');
       closeInstallModal();
+      checkStandaloneMode();
     });
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
