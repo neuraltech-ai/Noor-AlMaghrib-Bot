@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo
 import requests
 import telebot
 from telebot import types
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, Response
 
 from morocco_data import MOROCCO_CITIES, CITY_BY_ID, find_city, calculate_qibla, qibla_direction_ar
 from islamic_content import ADHKAR_DATA, DUAS_DATA, DAILY_INSPIRATIONS, ASMA_AL_HUSNA, QURAN_RADIOS
@@ -37,6 +37,14 @@ MOROCCO_TZ = ZoneInfo("Africa/Casablanca")
 app = Flask(__name__)
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML") if BOT_TOKEN else None
 
+BOT_USERNAME = ""
+if bot:
+    try:
+        me = bot.get_me()
+        BOT_USERNAME = me.username or ""
+    except Exception:
+        BOT_USERNAME = ""
+
 # In-memory cache: {(city_id, year, month): [day_dicts]}
 MONTH_CACHE = {}
 CACHE_LOCK = threading.Lock()
@@ -49,6 +57,12 @@ PRAYER_NAMES_AR = {
     "Asr": "العصر",
     "Maghrib": "المغرب",
     "Isha": "العشاء",
+}
+
+MONTH_NAMES_AR = {
+    1: "يناير", 2: "فبراير", 3: "مارس", 4: "أبريل",
+    5: "ماي", 6: "يونيو", 7: "يوليوز", 8: "غشت",
+    9: "شتنبر", 10: "أكتوبر", 11: "نونبر", 12: "دجنبر"
 }
 
 ALERT_PRAYERS = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
@@ -157,7 +171,6 @@ def get_all_subscribed_users() -> list:
 
 
 def mark_alert_sent(chat_id: int, alert_key: str) -> bool:
-    """Return True if not yet sent (and mark sent), False if already sent."""
     with DB_LOCK:
         conn = sqlite3.connect(DB_PATH)
         try:
@@ -242,7 +255,6 @@ def get_today_times(city_id: str) -> dict:
 
 
 def get_next_prayer(timings: dict, now: datetime) -> tuple:
-    """Return (prayer_key, prayer_ar, time_str, remaining_str)."""
     if not timings:
         return ("Fajr", "الفجر", "--:--", "--:--")
     order = ["Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha"]
@@ -257,7 +269,6 @@ def get_next_prayer(timings: dict, now: datetime) -> tuple:
             hrs, rem = divmod(diff, 3600)
             mins, _ = divmod(rem, 60)
             return (p, PRAYER_NAMES_AR[p], t_str, f"{hrs:02d} س {mins:02d} د")
-    # Next is tomorrow's Fajr
     f_str = timings.get("Fajr", "05:30")
     hh, mm = map(int, f_str.split(":"))
     p_dt = (now + timedelta(days=1)).replace(hour=hh, minute=mm, second=0, microsecond=0)
@@ -265,6 +276,18 @@ def get_next_prayer(timings: dict, now: datetime) -> tuple:
     hrs, rem = divmod(diff, 3600)
     mins, _ = divmod(rem, 60)
     return ("Fajr", "الفجر", f_str, f"{hrs:02d} س {mins:02d} د")
+
+
+def get_bot_share_url() -> str:
+    global BOT_USERNAME
+    if not BOT_USERNAME and bot:
+        try:
+            BOT_USERNAME = bot.get_me().username or ""
+        except Exception:
+            pass
+    if BOT_USERNAME:
+        return f"https://t.me/{BOT_USERNAME}"
+    return WEBAPP_URL or "https://t.me/"
 
 
 # ---------------------------------------------------------------------------
@@ -308,6 +331,12 @@ def main_menu_markup(chat_id: int = None):
     kb.add(
         types.InlineKeyboardButton("📻 إذاعة القرآن", callback_data="radio_menu"),
         types.InlineKeyboardButton("🌟 آية وحديث", callback_data="daily_insp"),
+    )
+    share_link = get_bot_share_url()
+    share_text = "🌿 بوت نور المغرب الإسلامي: مواقيت الصلاة الرسمية لكل المدن المغربية، الحصة الشهرية، منبه الأذان، الأذكار، الأدعية، والقبلة:"
+    tg_share = f"https://t.me/share/url?url={requests.utils.quote(share_link)}&text={requests.utils.quote(share_text)}"
+    kb.add(
+        types.InlineKeyboardButton("📤 مشاركة البوت (صدقة جارية)", url=tg_share),
     )
     return kb
 
@@ -371,15 +400,90 @@ def format_month_chunk(city_id: str, chunk_idx: int) -> tuple:
         types.InlineKeyboardButton("11 - 20", callback_data="month_2"),
         types.InlineKeyboardButton("21 - 31", callback_data="month_3"),
     )
+    kb.add(
+        types.InlineKeyboardButton("📥 إرسال جدول الشهر للطباعة", callback_data="send_print_month"),
+    )
     if WEBAPP_URL:
         kb.add(
             types.InlineKeyboardButton(
-                "📊 عرض الجدول الكامل والتفاصيل",
-                web_app=types.WebAppInfo(url=f"{WEBAPP_URL}/?tab=monthly"),
+                "📊 عرض الجدول التفاعلي الكامل",
+                web_app=types.WebAppInfo(url=f"{WEBAPP_URL}/?tab=prayers"),
             )
         )
     kb.add(types.InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="home"))
     return ("\n".join(lines), kb)
+
+
+def build_printable_monthly_html(city_id: str, year: int, month: int) -> str:
+    city = CITY_BY_ID.get(city_id, CITY_BY_ID["oujda"])
+    days = fetch_monthly_times(city_id, year, month)
+    m_name = MONTH_NAMES_AR.get(month, str(month))
+    hijri_title = ""
+    if days:
+        hijri_title = f"{days[0]['hijri_month']} {days[0]['hijri_year']} هـ"
+
+    rows_html = []
+    for d in days:
+        t = d["timings"]
+        rows_html.append(
+            f"<tr>"
+            f"<td><b>{d['day']}</b></td>"
+            f"<td>{d['weekday_ar']}</td>"
+            f"<td>{d['hijri_day']} {d['hijri_month']}</td>"
+            f"<td>{t['Fajr']}</td>"
+            f"<td>{t['Sunrise']}</td>"
+            f"<td>{t['Dhuhr']}</td>"
+            f"<td>{t['Asr']}</td>"
+            f"<td>{t['Maghrib']}</td>"
+            f"<td>{t['Isha']}</td>"
+            f"</tr>"
+        )
+
+    return f"""<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>الحصة الشهرية لمواقيت الصلاة - {city['ar']} - {m_name} {year}</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  @page {{ size: A4 portrait; margin: 10mm; }}
+  body {{ font-family: 'Cairo', sans-serif; color: #04241c; background: #fff; margin: 0; padding: 12px; }}
+  .header {{ text-align: center; border: 2px solid #04241c; border-radius: 12px; padding: 10px 16px; margin-bottom: 12px; background: #f7faf8; }}
+  .header h1 {{ margin: 0; font-size: 20px; color: #04241c; }}
+  .header p {{ margin: 4px 0 0; font-size: 13px; color: #374151; font-weight: 600; }}
+  .actions {{ text-align: center; margin-bottom: 12px; }}
+  .btn {{ background: #04241c; color: #f3dc8a; border: none; padding: 8px 20px; border-radius: 8px; font-family: 'Cairo', sans-serif; font-weight: 700; cursor: pointer; font-size: 14px; }}
+  table {{ width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; }}
+  th {{ background: #04241c; color: #f3dc8a; padding: 6px 4px; border: 1px solid #04241c; }}
+  td {{ padding: 4px; border: 1px solid #cbd5e1; }}
+  tr:nth-child(even) {{ background: #f1f5f9; }}
+  .footer {{ text-align: center; font-size: 11px; color: #64748b; margin-top: 10px; }}
+  @media print {{ .actions {{ display: none; }} body {{ padding: 0; }} }}
+</style>
+</head>
+<body>
+  <div class="actions">
+    <button class="btn" onclick="window.print()">🖨 طباعة الجدول / حفظ كملف PDF</button>
+  </div>
+  <div class="header">
+    <h1>🕌 الحصة الشهرية لمواقيت الصلاة — مدينة {city['ar']} ({city['region']})</h1>
+    <p>شهر {m_name} {year} م  |  {hijri_title} — وفق توقيت وزارة الأوقاف والشؤون الإسلامية بالمغرب</p>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>اليوم</th><th>الأيام</th><th>التاريخ الهجري</th>
+        <th>الفجر</th><th>الشروق</th><th>الظهر</th><th>العصر</th><th>المغرب</th><th>العشاء</th>
+      </tr>
+    </thead>
+    <tbody>
+      {"".join(rows_html)}
+    </tbody>
+  </table>
+  <div class="footer">تم التوليد عبر تطبيق وبوت نور المغرب الإسلامي</div>
+  <script>setTimeout(() => {{ try {{ window.print(); }} catch(e){{}} }}, 600);</script>
+</body>
+</html>"""
 
 
 # ---------------------------------------------------------------------------
@@ -433,14 +537,7 @@ if bot:
         user = get_user(chat_id)
 
         try:
-            if data == "home":
-                bot.edit_message_text(
-                    format_today_message(user),
-                    chat_id,
-                    msg_id,
-                    reply_markup=main_menu_markup(chat_id),
-                )
-            elif data == "today":
+            if data == "home" or data == "today":
                 bot.edit_message_text(
                     format_today_message(user),
                     chat_id,
@@ -451,6 +548,22 @@ if bot:
                 idx = int(data.split("_")[1])
                 text, kb = format_month_chunk(user["city_id"], idx)
                 bot.edit_message_text(text, chat_id, msg_id, reply_markup=kb)
+
+            elif data == "send_print_month":
+                now = datetime.now(MOROCCO_TZ)
+                city = CITY_BY_ID.get(user["city_id"], CITY_BY_ID["oujda"])
+                html_str = build_printable_monthly_html(city["id"], now.year, now.month)
+                bio = html_str.encode("utf-8")
+                import io
+                doc = io.BytesIO(bio)
+                doc.name = f"Imsakiya_{city['en']}_{now.year}_{now.month:02d}.html"
+                bot.answer_callback_query(call.id, "📥 جاري إرسال ملف الحصة الشهرية للطباعة...")
+                bot.send_document(
+                    chat_id,
+                    doc,
+                    caption=f"🖨 <b>الحصة الشهرية الجاهزة للطباعة — مدينة {city['ar']}</b>\nافتح الملف واضغط طباعة أو حفظ كـ PDF.",
+                )
+                return
 
             elif data == "adhkar_menu":
                 kb = types.InlineKeyboardMarkup(row_width=2)
@@ -673,7 +786,6 @@ def scheduler_loop():
                         if ":" not in p_time:
                             continue
 
-                        # Exact prayer time alert
                         if p_time == now_hm:
                             akey = f"{today_str}_{p_key}_exact"
                             if mark_alert_sent(chat_id, akey):
@@ -687,7 +799,6 @@ def scheduler_loop():
                                 except Exception:
                                     pass
 
-                        # Pre-adhan reminder
                         pre_mins = u.get("pre_alert_mins", 10)
                         if pre_mins > 0:
                             hh, mm = map(int, p_time.split(":"))
@@ -706,7 +817,6 @@ def scheduler_loop():
                                     except Exception:
                                         pass
 
-                    # Morning & Evening Adhkar Reminders
                     if u.get("adhkar_alerts", 1):
                         if now_hm == "07:30" and mark_alert_sent(chat_id, f"{today_str}_morning_adhkar"):
                             try:
@@ -719,7 +829,6 @@ def scheduler_loop():
                             except Exception:
                                 pass
 
-                    # Friday Surah Al-Kahf Reminder
                     if u.get("kahf_alert", 1) and now.weekday() == 4 and now_hm == "10:00":
                         if mark_alert_sent(chat_id, f"{today_str}_kahf"):
                             try:
@@ -752,12 +861,40 @@ def bot_polling_loop():
 # ---------------------------------------------------------------------------
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", bot_share_url=get_bot_share_url())
 
 
 @app.route("/health")
 def health():
     return jsonify({"status": "ok", "time": datetime.now(MOROCCO_TZ).isoformat()}), 200
+
+
+@app.route("/print-monthly")
+def print_monthly():
+    city_id = request.args.get("city", "oujda")
+    now = datetime.now(MOROCCO_TZ)
+    year = int(request.args.get("year", now.year))
+    month = int(request.args.get("month", now.month))
+    chat_id = request.args.get("chat_id", type=int)
+    send_tg = request.args.get("send_tg", "0") == "1"
+
+    html_str = build_printable_monthly_html(city_id, year, month)
+    if send_tg and chat_id and bot:
+        try:
+            import io
+            city = CITY_BY_ID.get(city_id, CITY_BY_ID["oujda"])
+            doc = io.BytesIO(html_str.encode("utf-8"))
+            doc.name = f"Imsakiya_{city['en']}_{year}_{month:02d}.html"
+            bot.send_document(
+                chat_id,
+                doc,
+                caption=f"🖨 <b>الحصة الشهرية الجاهزة للطباعة — مدينة {city['ar']}</b>\nافتح الملف واضغط طباعة أو حفظ كـ PDF.",
+            )
+            return jsonify({"ok": True})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    return Response(html_str, mimetype="text/html; charset=utf-8")
 
 
 @app.route("/api/cities")
@@ -783,6 +920,7 @@ def api_prayer_times():
             "today": today,
             "monthly": month_days,
             "server_now": now.isoformat(),
+            "bot_share_url": get_bot_share_url(),
         }
     )
 
@@ -826,7 +964,6 @@ def api_user_settings():
     return jsonify({"ok": True})
 
 
-# Initialize DB and background threads on module load (works under Gunicorn)
 init_db()
 threading.Thread(target=scheduler_loop, daemon=True).start()
 threading.Thread(target=bot_polling_loop, daemon=True).start()

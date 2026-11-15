@@ -20,7 +20,7 @@
       background: radial-gradient(circle at top, #0a3d30 0%, #031914 70%);
       color: #f4f7f5;
       min-height: 100vh;
-      padding-bottom: 84px;
+      padding-bottom: 88px;
     }
     .font-quran { font-family: 'Amiri', serif; }
     .glass-card {
@@ -46,7 +46,7 @@
 <body class="islamic-pattern">
 
   <!-- Top Header -->
-  <header class="sticky top-0 z-30 glass-card border-b border-amber-500/20 px-4 py-3 flex items-center justify-between">
+  <header class="sticky top-0 z-30 glass-card border-b border-amber-500/20 px-3.5 py-3 flex items-center justify-between">
     <div class="flex items-center gap-2.5">
       <div class="w-9 h-9 rounded-xl gold-gradient flex items-center justify-center text-emerald-950 font-bold text-lg shadow-lg">🕌</div>
       <div>
@@ -54,10 +54,15 @@
         <p id="headerHijri" class="text-[11px] text-emerald-200/80">جاري التحميل...</p>
       </div>
     </div>
-    <button onclick="openCityModal()" class="flex items-center gap-1.5 bg-emerald-900/80 hover:bg-emerald-800 border border-amber-400/30 px-3 py-1.5 rounded-full text-xs font-semibold text-amber-200 transition">
-      <span>📍</span>
-      <span id="currentCityName">وجدة</span>
-    </button>
+    <div class="flex items-center gap-1.5">
+      <button onclick="openShareModal()" class="bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/30 px-2.5 py-1.5 rounded-full text-xs font-bold text-amber-200 transition">
+        📤 مشاركة
+      </button>
+      <button onclick="openCityModal()" class="flex items-center gap-1 bg-emerald-900/80 hover:bg-emerald-800 border border-amber-400/30 px-3 py-1.5 rounded-full text-xs font-semibold text-amber-200 transition">
+        <span>📍</span>
+        <span id="currentCityName">وجدة</span>
+      </button>
+    </div>
   </header>
 
   <main class="max-w-2xl mx-auto px-3.5 pt-4 space-y-4">
@@ -86,9 +91,24 @@
       <!-- Today Grid -->
       <div class="grid grid-cols-3 gap-2.5" id="todayPrayersGrid"></div>
 
+      <!-- Adhan Audio Player Bar -->
+      <div class="glass-card rounded-2xl p-3 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="text-lg">🔊</span>
+          <div>
+            <div class="text-xs font-bold text-amber-300">الاستماع للأذان المغربي / الحرم</div>
+            <div class="text-[10px] text-emerald-200/75">صوت نقي خاشع بضغطة واحدة</div>
+          </div>
+        </div>
+        <button onclick="toggleAdhanAudio()" id="adhanPlayBtn" class="gold-gradient text-emerald-950 font-bold text-xs px-3.5 py-1.5 rounded-xl shadow">
+          ▶️ تشغيل الأذان
+        </button>
+        <audio id="adhanAudioEl" src="https://www.islamcan.com/audio/adhan/azan1.mp3" preload="none"></audio>
+      </div>
+
       <!-- Monthly Schedule -->
       <div class="glass-card rounded-2xl p-4">
-        <div class="flex items-center justify-between mb-3">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div>
             <h3 class="text-sm font-bold text-amber-300">📅 الحصة الشهرية لمواقيت الصلاة</h3>
             <p id="monthlySubtitle" class="text-[11px] text-emerald-200/70">وزارة الأوقاف والشؤون الإسلامية</p>
@@ -100,9 +120,12 @@
               <option value="7">يوليوز</option><option value="8">غشت</option><option value="9">شتنبر</option>
               <option value="10">أكتوبر</option><option value="11">نونبر</option><option value="12">دجنبر</option>
             </select>
-            <button onclick="window.print()" class="bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 px-2.5 py-1 rounded-lg text-xs border border-amber-400/30">🖨 طباعة</button>
+            <button onclick="handlePrintMonthly()" id="printMonthlyBtn" class="gold-gradient text-emerald-950 font-bold px-3 py-1 rounded-lg text-xs shadow flex items-center gap-1">
+              <span>🖨</span><span>طباعة / تحميل</span>
+            </button>
           </div>
         </div>
+        <div id="printToast" class="hidden mb-2 p-2 rounded-lg bg-emerald-900/90 border border-amber-400/40 text-xs text-amber-200 text-center"></div>
         <div class="overflow-x-auto max-h-80 overflow-y-auto rounded-xl border border-emerald-800/60">
           <table class="w-full text-center text-xs">
             <thead class="bg-emerald-950/90 text-amber-300 sticky top-0">
@@ -174,10 +197,32 @@
         <div id="radioList" class="space-y-2"></div>
         <audio id="radioPlayer" controls class="w-full h-9 hidden mt-2"></audio>
       </div>
+
+      <!-- Asma Al-Husna Grid -->
+      <div class="glass-card rounded-2xl p-4 space-y-3">
+        <h3 class="text-sm font-bold text-amber-300">✨ أسماء الله الحسنى ومعانيها</h3>
+        <div id="asmaGrid" class="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-1"></div>
+      </div>
     </section>
 
-    <!-- TAB 4: ALARMS & SETTINGS -->
+    <!-- TAB 4: ALARMS, KHATMA & SETTINGS -->
     <section id="tab-settings" class="hidden space-y-4">
+      <!-- Khatma Tracker -->
+      <div class="glass-card rounded-2xl p-4 space-y-3">
+        <div class="flex justify-between items-center">
+          <h3 class="text-sm font-bold text-amber-300">📖 متابعة الورد القرآني (الختمة)</h3>
+          <span id="khatmaBadge" class="text-xs font-bold text-amber-200 bg-amber-500/20 px-2.5 py-0.5 rounded-full">الجزء 1 / 30</span>
+        </div>
+        <div class="w-full bg-emerald-950 rounded-full h-2.5 overflow-hidden border border-amber-400/20">
+          <div id="khatmaBar" class="gold-gradient h-2.5 transition-all duration-300" style="width: 3.3%"></div>
+        </div>
+        <div class="flex justify-between items-center pt-1">
+          <button onclick="stepKhatma(-1)" class="px-3 py-1 rounded-lg bg-emerald-900/80 text-xs text-emerald-200 border border-amber-400/20">- جزء سابق</button>
+          <span class="text-[11px] text-emerald-200/80">سجّل تقدمك اليومي في الختمة</span>
+          <button onclick="stepKhatma(1)" class="px-3 py-1 rounded-lg gold-gradient text-xs text-emerald-950 font-bold">+ أتممت جزءاً</button>
+        </div>
+      </div>
+
       <div class="glass-card rounded-2xl p-4 space-y-4">
         <h3 class="text-sm font-bold text-amber-300">🔔 إعدادات منبه الصلاة والتنبيهات</h3>
         <label class="flex items-center justify-between py-2 border-b border-emerald-800/50">
@@ -201,6 +246,28 @@
     </section>
 
   </main>
+
+  <!-- Share Modal -->
+  <div id="shareModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="glass-card w-full max-w-sm rounded-2xl p-5 space-y-3 text-center">
+      <div class="flex justify-between items-center">
+        <h3 class="font-bold text-amber-300 text-sm">📤 تقاسم البوت (صدقة جارية)</h3>
+        <button onclick="closeShareModal()" class="text-emerald-200 text-lg">✕</button>
+      </div>
+      <p class="text-xs text-emerald-100/80 leading-relaxed">شارك البوت مع أهلك وأصدقائك ليكون لك أجر كل من صلاها في وقتها أو قرأ ذكراً أو دعاءً.</p>
+      <div class="space-y-2 pt-1">
+        <button onclick="shareViaTelegram()" class="w-full py-2.5 rounded-xl gold-gradient text-emerald-950 font-bold text-xs shadow">
+          ✈️ مشاركة عبر تيليجرام
+        </button>
+        <button onclick="shareViaWhatsApp()" class="w-full py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs border border-amber-400/30">
+          💬 مشاركة عبر واتساب
+        </button>
+        <button onclick="copyBotLink()" id="copyLinkBtn" class="w-full py-2.5 rounded-xl bg-emerald-950/90 text-amber-200 font-semibold text-xs border border-amber-400/30">
+          🔗 نسخ رابط البوت والتطبيق
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- City Picker Modal -->
   <div id="cityModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm hidden items-center justify-center p-4">
@@ -227,7 +294,7 @@
       <span>🧭</span><span>المسبحة والقبلة</span>
     </button>
     <button onclick="switchTab('settings')" id="nav-settings" class="flex-1 py-2.5 flex flex-col items-center gap-0.5 text-emerald-200/70">
-      <span>🔔</span><span>المنبه</span>
+      <span>🔔</span><span>المنبه والورد</span>
     </button>
   </nav>
 
@@ -241,7 +308,9 @@
     let allCities = [];
     let contentData = {};
     let todayTimings = {};
+    let botShareUrl = "{{ bot_share_url }}" || window.location.origin;
     let tasbihCount = parseInt(localStorage.getItem('noor_tasbih') || '0', 10);
+    let khatmaJuz = parseInt(localStorage.getItem('noor_khatma_juz') || '1', 10);
 
     const PRAYER_LABELS = [
       { key: 'Fajr', name: 'الفجر', icon: '🌌' },
@@ -255,6 +324,7 @@
     async function initApp() {
       document.getElementById('tasbihCounter').innerText = tasbihCount;
       document.getElementById('monthSelect').value = new Date().getMonth() + 1;
+      renderKhatma();
 
       const [citiesRes, contentRes] = await Promise.all([
         fetch('/api/cities').then(r => r.json()),
@@ -277,6 +347,7 @@
       renderAdhkar('morning');
       renderDuas();
       renderRadios();
+      renderAsma();
       if (contentData.inspirations?.length) {
         const insp = contentData.inspirations[new Date().getDate() % contentData.inspirations.length];
         document.getElementById('dailyAyahText').innerText = insp.text;
@@ -292,6 +363,7 @@
       currentCity = cityId;
       localStorage.setItem('noor_city', cityId);
       const data = await fetch(`/api/prayer-times?city=${cityId}`).then(r => r.json());
+      if (data.bot_share_url) botShareUrl = data.bot_share_url;
       document.getElementById('currentCityName').innerText = data.city.ar;
       document.getElementById('qiblaCityText').innerText = `مدينة ${data.city.ar}`;
       document.getElementById('qiblaAngleText').innerText = `${data.qibla_angle}°`;
@@ -313,6 +385,43 @@
       const y = new Date().getFullYear();
       const data = await fetch(`/api/monthly?city=${currentCity}&year=${y}&month=${m}`).then(r => r.json());
       renderMonthlyTable(data.days || []);
+    }
+
+    async function handlePrintMonthly() {
+      const m = document.getElementById('monthSelect').value;
+      const y = new Date().getFullYear();
+      const printUrl = `${window.location.origin}/print-monthly?city=${currentCity}&year=${y}&month=${m}`;
+      const toast = document.getElementById('printToast');
+
+      // 1) If inside Telegram with chatId, also send the printable file directly in chat
+      if (chatId) {
+        fetch(`/print-monthly?city=${currentCity}&year=${y}&month=${m}&chat_id=${chatId}&send_tg=1`).catch(() => {});
+        toast.innerText = '✅ تم إرسال ملف الحصة الشهرية الجاهز للطباعة إلى محادثة البوت، وجاري فتح صفحة الطباعة...';
+        toast.classList.remove('hidden');
+        setTimeout(() => toast.classList.add('hidden'), 4500);
+      }
+
+      // 2) Open in external system browser (Telegram WebView blocks window.print(), external browser prints cleanly)
+      if (tg && tg.openLink) {
+        tg.openLink(printUrl);
+      } else {
+        window.open(printUrl, '_blank');
+      }
+    }
+
+    function toggleAdhanAudio() {
+      const audio = document.getElementById('adhanAudioEl');
+      const btn = document.getElementById('adhanPlayBtn');
+      if (audio.paused) {
+        audio.play().then(() => {
+          btn.innerText = '⏹ إيقاف الأذان';
+        }).catch(() => {});
+      } else {
+        audio.pause();
+        audio.currentTime = 0;
+        btn.innerText = '▶️ تشغيل الأذان';
+      }
+      audio.onended = () => { btn.innerText = '▶️ تشغيل الأذان'; };
     }
 
     function renderTodayGrid(timings) {
@@ -383,7 +492,7 @@
       `).join('');
 
       const items = cats[catKey]?.items || [];
-      document.getElementById('adhkarCardsList').innerHTML = items.map((item, i) => `
+      document.getElementById('adhkarCardsList').innerHTML = items.map(item => `
         <div onclick="decrementDhikr(this)" data-rem="${item.count}" class="glass-card rounded-2xl p-4 space-y-2 cursor-pointer active:scale-[0.99] transition">
           <p class="font-quran text-lg leading-loose text-white">${item.text}</p>
           <div class="flex items-center justify-between pt-2 border-t border-emerald-800/50">
@@ -428,6 +537,27 @@
       `).join('');
     }
 
+    function renderAsma() {
+      const asma = contentData.asma || [];
+      document.getElementById('asmaGrid').innerHTML = asma.map(([name, meaning]) => `
+        <div class="bg-emerald-950/60 border border-amber-400/20 rounded-xl p-2.5 text-center">
+          <div class="font-quran text-base font-bold text-amber-300">${name}</div>
+          <div class="text-[11px] text-emerald-100/80 mt-0.5">${meaning}</div>
+        </div>
+      `).join('');
+    }
+
+    function renderKhatma() {
+      document.getElementById('khatmaBadge').innerText = `الجزء ${khatmaJuz} / 30`;
+      document.getElementById('khatmaBar').style.width = `${(khatmaJuz / 30) * 100}%`;
+    }
+
+    function stepKhatma(delta) {
+      khatmaJuz = Math.max(1, Math.min(30, khatmaJuz + delta));
+      localStorage.setItem('noor_khatma_juz', khatmaJuz);
+      renderKhatma();
+    }
+
     function playRadio(url) {
       const p = document.getElementById('radioPlayer');
       p.src = url;
@@ -449,6 +579,35 @@
     }
 
     function changeTasbihPhrase() { resetTasbih(); }
+
+    function openShareModal() {
+      document.getElementById('shareModal').classList.remove('hidden');
+      document.getElementById('shareModal').classList.add('flex');
+    }
+    function closeShareModal() {
+      document.getElementById('shareModal').classList.add('hidden');
+      document.getElementById('shareModal').classList.remove('flex');
+    }
+    function shareViaTelegram() {
+      const text = encodeURIComponent('🌿 بوت نور المغرب الإسلامي: مواقيت الصلاة الرسمية لكل المدن المغربية، الحصة الشهرية، منبه الأذان، الأذكار، الأدعية، والقبلة:');
+      const url = encodeURIComponent(botShareUrl);
+      const full = `https://t.me/share/url?url=${url}&text=${text}`;
+      if (tg && tg.openTelegramLink) tg.openTelegramLink(full);
+      else window.open(full, '_blank');
+    }
+    function shareViaWhatsApp() {
+      const msg = encodeURIComponent(`🌿 بوت نور المغرب الإسلامي: مواقيت الصلاة الرسمية لكل المدن المغربية، الحصة الشهرية، منبه الأذان، الأذكار، والقبلة:\n${botShareUrl}`);
+      const wa = `https://wa.me/?text=${msg}`;
+      if (tg && tg.openLink) tg.openLink(wa);
+      else window.open(wa, '_blank');
+    }
+    function copyBotLink() {
+      navigator.clipboard.writeText(botShareUrl).then(() => {
+        const btn = document.getElementById('copyLinkBtn');
+        btn.innerText = '✅ تم نسخ الرابط بنجاح!';
+        setTimeout(() => { btn.innerText = '🔗 نسخ رابط البوت والتطبيق'; }, 2000);
+      });
+    }
 
     function openCityModal() {
       document.getElementById('cityModal').classList.remove('hidden');
