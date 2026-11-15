@@ -3,9 +3,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#04241c" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="نور المغرب" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <link rel="apple-touch-icon" href="/icon.svg" />
   <title>نور المغرب — المواقيت ومصحف ورش</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet" />
   <style>
@@ -20,13 +28,13 @@
       background: radial-gradient(circle at top, #0a3d30 0%, #031914 70%);
       color: #f4f7f5;
       min-height: 100vh;
-      padding-bottom: 88px;
+      padding-bottom: 92px;
     }
     .font-quran { font-family: 'Amiri', serif; }
     .glass-card {
-      background: rgba(8, 51, 40, 0.72);
+      background: rgba(8, 51, 40, 0.75);
       backdrop-filter: blur(12px);
-      border: 1px solid rgba(212, 175, 55, 0.22);
+      border: 1px solid rgba(212, 175, 55, 0.24);
     }
     .gold-gradient {
       background: linear-gradient(135deg, #d4af37 0%, #f3dc8a 50%, #b88a1e 100%);
@@ -46,71 +54,77 @@
 <body class="islamic-pattern">
 
   <!-- Top Header -->
-  <header class="sticky top-0 z-30 glass-card border-b border-amber-500/20 px-3.5 py-3 flex items-center justify-between">
-    <div class="flex items-center gap-2.5">
+  <header class="sticky top-0 z-30 glass-card border-b border-amber-500/20 px-3 py-2.5 flex items-center justify-between">
+    <div class="flex items-center gap-2">
       <div class="w-9 h-9 rounded-xl gold-gradient flex items-center justify-center text-emerald-950 font-bold text-lg shadow-lg">🕌</div>
       <div>
-        <h1 class="text-base font-extrabold text-amber-300 leading-tight">نور المغرب</h1>
-        <p id="headerHijri" class="text-[11px] text-emerald-200/80">جاري التحميل...</p>
+        <h1 class="text-sm font-extrabold text-amber-300 leading-tight">نور المغرب</h1>
+        <p id="headerHijri" class="text-[10px] text-emerald-200/80">جاري التحميل...</p>
       </div>
     </div>
     <div class="flex items-center gap-1.5">
-      <button onclick="openShareModal()" class="bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/30 px-2.5 py-1.5 rounded-full text-xs font-bold text-amber-200 transition">
-        📤 مشاركة
+      <button onclick="openInstallModal()" class="gold-gradient text-emerald-950 px-2.5 py-1.5 rounded-full text-[11px] font-extrabold shadow">
+        📲 تثبيت التطبيق
       </button>
-      <button onclick="openCityModal()" class="flex items-center gap-1 bg-emerald-900/80 hover:bg-emerald-800 border border-amber-400/30 px-3 py-1.5 rounded-full text-xs font-semibold text-amber-200 transition">
+      <button onclick="openShareModal()" class="bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/30 px-2 py-1.5 rounded-full text-[11px] font-bold text-amber-200 transition">
+        📤
+      </button>
+      <button onclick="openCityModal()" class="flex items-center gap-1 bg-emerald-900/80 hover:bg-emerald-800 border border-amber-400/30 px-2.5 py-1.5 rounded-full text-[11px] font-semibold text-amber-200 transition">
         <span>📍</span>
         <span id="currentCityName">وجدة</span>
       </button>
     </div>
   </header>
 
-  <main class="max-w-2xl mx-auto px-3.5 pt-4 space-y-4">
+  <main class="max-w-2xl mx-auto px-3.5 pt-3.5 space-y-4">
 
     <!-- Hero Countdown Card -->
-    <section class="relative overflow-hidden rounded-2xl p-5 glass-card shadow-2xl border border-amber-400/30">
+    <section class="relative overflow-hidden rounded-2xl p-4 glass-card shadow-2xl border border-amber-400/30">
       <div class="flex justify-between items-start">
         <div>
           <span class="text-xs text-amber-300/90 font-semibold">الصلاة القادمة</span>
           <h2 id="nextPrayerName" class="text-2xl font-extrabold text-white mt-0.5">--</h2>
-          <p id="nextPrayerTime" class="text-sm text-emerald-200/80">الساعة --:--</p>
+          <p id="nextPrayerTime" class="text-xs text-emerald-200/80">الساعة --:--</p>
         </div>
         <div class="text-left">
           <span class="text-[11px] text-emerald-200/70 block">الوقت المتبقي</span>
           <div id="countdownTimer" class="text-2xl font-extrabold text-amber-300 font-mono tracking-wider mt-0.5">--:--:--</div>
         </div>
       </div>
-      <div id="dailyAyahBox" class="mt-4 pt-3 border-t border-amber-400/15 text-center">
+      <div id="dailyAyahBox" class="mt-3 pt-2.5 border-t border-amber-400/15 text-center">
         <p id="dailyAyahText" class="font-quran text-lg text-amber-100 leading-relaxed">﴿أَلَا بِذِكْرِ اللَّهِ تَطْمَئِنُّ الْقُلُوبُ﴾</p>
         <span id="dailyAyahRef" class="text-[11px] text-emerald-300/75">سورة الرعد: 28</span>
       </div>
     </section>
 
-    <!-- TAB 1: PRAYER TIMES & MONTHLY -->
+    <!-- TAB 1: PRAYER TIMES & MONTHLY PDF -->
     <section id="tab-prayers" class="space-y-4">
       <div class="grid grid-cols-3 gap-2.5" id="todayPrayersGrid"></div>
 
-      <!-- Adhan Audio Player Bar -->
-      <div class="glass-card rounded-2xl p-3 flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <span class="text-lg">🔊</span>
-          <div>
-            <div class="text-xs font-bold text-amber-300">الاستماع للأذان</div>
-            <div class="text-[10px] text-emerald-200/75">صوت نقي خاشع بضغطة واحدة</div>
+      <!-- Multi-Voice Adhan Audio Selector Card -->
+      <div class="glass-card rounded-2xl p-3.5 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="text-lg">🔊</span>
+            <div>
+              <div class="text-xs font-bold text-amber-300">الاستماع للأذان بأصوات متعددة</div>
+              <div class="text-[10px] text-emerald-200/75">اختر المؤذن المفضل لديك وسيتم حفظ اختيارك تلقائياً</div>
+            </div>
           </div>
+          <button onclick="toggleAdhanAudio()" id="adhanPlayBtn" class="gold-gradient text-emerald-950 font-extrabold text-xs px-3.5 py-1.5 rounded-xl shadow">
+            ▶️ استماع
+          </button>
         </div>
-        <button onclick="toggleAdhanAudio()" id="adhanPlayBtn" class="gold-gradient text-emerald-950 font-bold text-xs px-3.5 py-1.5 rounded-xl shadow">
-          ▶️ تشغيل الأذان
-        </button>
-        <audio id="adhanAudioEl" src="https://www.islamcan.com/audio/adhan/azan1.mp3" preload="none"></audio>
+        <select id="adhanVoiceSelect" onchange="changeAdhanVoice(this.value)" class="w-full bg-emerald-950/90 border border-amber-400/30 rounded-xl px-3 py-2 text-xs text-amber-100 font-semibold"></select>
+        <audio id="adhanAudioEl" preload="none"></audio>
       </div>
 
-      <!-- Monthly Schedule -->
+      <!-- Monthly Schedule & 1-Page A4 PDF Export -->
       <div class="glass-card rounded-2xl p-4">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div>
             <h3 class="text-sm font-bold text-amber-300">📅 الحصة الشهرية لمواقيت الصلاة</h3>
-            <p id="monthlySubtitle" class="text-[11px] text-emerald-200/70">وزارة الأوقاف والشؤون الإسلامية</p>
+            <p id="monthlySubtitle" class="text-[11px] text-emerald-200/70">وزارة الأوقاف والشؤون الإسلامية — صفحة واحدة A4</p>
           </div>
           <div class="flex items-center gap-1.5">
             <select id="monthSelect" onchange="loadMonthly()" class="bg-emerald-950/90 border border-amber-400/30 rounded-lg px-2 py-1 text-xs text-amber-200">
@@ -119,8 +133,8 @@
               <option value="7">يوليوز</option><option value="8">غشت</option><option value="9">شتنبر</option>
               <option value="10">أكتوبر</option><option value="11">نونبر</option><option value="12">دجنبر</option>
             </select>
-            <button onclick="handlePrintMonthly()" id="printMonthlyBtn" class="gold-gradient text-emerald-950 font-bold px-3 py-1 rounded-lg text-xs shadow flex items-center gap-1">
-              <span>🖨</span><span>طباعة / تحميل</span>
+            <button onclick="downloadMonthlyPDF()" id="printMonthlyBtn" class="gold-gradient text-emerald-950 font-extrabold px-3 py-1.5 rounded-lg text-xs shadow flex items-center gap-1">
+              <span>📄</span><span>تحميل PDF (A4)</span>
             </button>
           </div>
         </div>
@@ -146,17 +160,15 @@
 
     <!-- TAB 2: MUSHAF WARSH & WARSH RADIOS -->
     <section id="tab-quran" class="hidden space-y-4">
-      <!-- Interactive Warsh Mushaf Reader + Omar Al-Kazabri Audio -->
       <div class="glass-card rounded-2xl p-4 space-y-3">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h3 class="text-sm font-bold text-amber-300">📖 المصحف المحمدي — رواية ورش عن نافع</h3>
-            <p class="text-[11px] text-emerald-200/75">قراءة نصية برسم ورش مع تلاوة الشيخ عمر القزابري</p>
+            <p class="text-[11px] text-emerald-200/75">النص الكامل برسم ورش مع تلاوة الشيخ عمر القزابري</p>
           </div>
           <select id="surahSelect" onchange="loadWarshSurah(this.value)" class="bg-emerald-950 border border-amber-400/40 rounded-xl px-3 py-1.5 text-xs text-amber-200 font-bold"></select>
         </div>
 
-        <!-- Surah Audio Bar (Omar Al-Kazabri - Warsh) -->
         <div class="bg-emerald-950/70 rounded-xl p-2.5 border border-amber-400/20 space-y-1.5">
           <div class="flex items-center justify-between text-xs">
             <span id="surahAudioLabel" class="text-amber-200 font-semibold">🎧 تلاوة سورة الفاتحة — الشيخ عمر القزابري (ورش)</span>
@@ -164,13 +176,11 @@
           <audio id="warshSurahPlayer" controls class="w-full h-9"></audio>
         </div>
 
-        <!-- Warsh Verses Box -->
         <div id="warshVersesContainer" class="bg-emerald-950/60 border border-amber-400/25 rounded-2xl p-4 max-h-96 overflow-y-auto font-quran text-xl leading-loose text-amber-50 text-justify">
           جاري تحميل آيات السورة برواية ورش عن نافع...
         </div>
       </div>
 
-      <!-- 24/7 Warsh Quran Radios -->
       <div class="glass-card rounded-2xl p-4 space-y-2.5">
         <h3 class="text-sm font-bold text-amber-300">📻 إذاعات القرآن الكريم برواية ورش (24/7)</h3>
         <div id="radioList" class="space-y-2"></div>
@@ -228,20 +238,43 @@
       </div>
     </section>
 
-    <!-- TAB 5: ALARMS & KHATMA -->
+    <!-- TAB 5: INTERACTIVE 60-HIZB KHATMA & ALARMS -->
     <section id="tab-settings" class="hidden space-y-4">
-      <div class="glass-card rounded-2xl p-4 space-y-3">
+      <div class="glass-card rounded-2xl p-4 space-y-3.5">
         <div class="flex justify-between items-center">
-          <h3 class="text-sm font-bold text-amber-300">📖 متابعة الورد القرآني (الختمة برواية ورش)</h3>
-          <span id="khatmaBadge" class="text-xs font-bold text-amber-200 bg-amber-500/20 px-2.5 py-0.5 rounded-full">الحزب 1 / 60</span>
+          <div>
+            <h3 class="text-sm font-bold text-amber-300">📖 الورد القرآني التفاعلي (60 حزباً — ورش)</h3>
+            <p class="text-[11px] text-emerald-200/75">اضغط على أي حزب لوسمه كمقروء أو لفتحه في المصحف</p>
+          </div>
+          <span id="khatmaBadge" class="text-xs font-extrabold text-amber-200 bg-amber-500/20 px-3 py-1 rounded-full border border-amber-400/30">0 / 60 حزب</span>
         </div>
-        <div class="w-full bg-emerald-950 rounded-full h-2.5 overflow-hidden border border-amber-400/20">
-          <div id="khatmaBar" class="gold-gradient h-2.5 transition-all duration-300" style="width: 1.6%"></div>
+
+        <div class="w-full bg-emerald-950 rounded-full h-3 overflow-hidden border border-amber-400/25">
+          <div id="khatmaBar" class="gold-gradient h-3 transition-all duration-300" style="width: 0%"></div>
         </div>
-        <div class="flex justify-between items-center pt-1">
-          <button onclick="stepKhatma(-1)" class="px-3 py-1 rounded-lg bg-emerald-900/80 text-xs text-emerald-200 border border-amber-400/20">- حزب سابق</button>
-          <span class="text-[11px] text-emerald-200/80">نظام الـ 60 حزباً المعتمد في المغرب</span>
-          <button onclick="stepKhatma(1)" class="px-3 py-1 rounded-lg gold-gradient text-xs text-emerald-950 font-bold">+ أتممت حزباً</button>
+
+        <!-- Current Hizb Action Bar -->
+        <div class="bg-emerald-950/80 border border-amber-400/25 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div id="selectedHizbTitle" class="text-xs font-bold text-amber-300">الحزب 1 — سورة الفاتحة / البقرة</div>
+            <div class="text-[10px] text-emerald-200/75">الأرباع: 4 أرباع (ربع، نصف، ثلاثة أرباع، تمام الحزب)</div>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button onclick="openSelectedHizbInMushaf()" class="px-2.5 py-1.5 rounded-lg bg-emerald-800 hover:bg-emerald-700 text-amber-200 text-xs font-bold border border-amber-400/30">
+              📖 قراءة الحزب
+            </button>
+            <button onclick="toggleSelectedHizbDone()" id="toggleHizbBtn" class="px-3 py-1.5 rounded-lg gold-gradient text-emerald-950 text-xs font-extrabold shadow">
+              ✅ إتمام الحزب
+            </button>
+          </div>
+        </div>
+
+        <!-- Interactive 60-Hizb Grid -->
+        <div id="hizbGrid60" class="grid grid-cols-10 gap-1.5 pt-1"></div>
+
+        <div class="flex justify-between items-center pt-1 text-[11px] text-emerald-300/80">
+          <span>🟢 ذهبي = حزب مكتمل</span>
+          <button onclick="resetKhatmaAll()" class="text-rose-300 hover:underline">بدء ختمة جديدة (تصفير)</button>
         </div>
       </div>
 
@@ -269,14 +302,68 @@
 
   </main>
 
+  <!-- Hidden Offscreen Single-Page A4 Portrait Template for Instant PDF Generation -->
+  <div style="position:fixed; left:-9999px; top:0;">
+    <div id="pdfSinglePageA4" dir="rtl" style="width:190mm; background:#ffffff; color:#04241c; font-family:'Cairo',sans-serif; padding:4mm; box-sizing:border-box;">
+      <div style="border:2px solid #04241c; border-radius:8px; padding:6px 10px; text-align:center; background:#f4f8f6; margin-bottom:6px;">
+        <div id="pdfHeaderTitle" style="font-size:15px; font-weight:800; color:#04241c;">🕌 الحصة الشهرية لمواقيت الصلاة — مدينة وجدة</div>
+        <div id="pdfHeaderSub" style="font-size:10px; font-weight:600; color:#334155; margin-top:2px;">وفق توقيت وزارة الأوقاف والشؤون الإسلامية بالمغرب — رواية ورش عن نافع</div>
+      </div>
+      <table style="width:100%; border-collapse:collapse; font-size:9.2px; text-align:center;">
+        <thead>
+          <tr style="background:#04241c; color:#f3dc8a;">
+            <th style="padding:3px 2px; border:1px solid #04241c;">اليوم</th>
+            <th style="padding:3px 2px; border:1px solid #04241c;">الأيام</th>
+            <th style="padding:3px 2px; border:1px solid #04241c;">التاريخ الهجري</th>
+            <th style="padding:3px 2px; border:1px solid #04241c;">الفجر</th>
+            <th style="padding:3px 2px; border:1px solid #04241c;">الشروق</th>
+            <th style="padding:3px 2px; border:1px solid #04241c;">الظهر</th>
+            <th style="padding:3px 2px; border:1px solid #04241c;">العصر</th>
+            <th style="padding:3px 2px; border:1px solid #04241c;">المغرب</th>
+            <th style="padding:3px 2px; border:1px solid #04241c;">العشاء</th>
+          </tr>
+        </thead>
+        <tbody id="pdfTableRows"></tbody>
+      </table>
+      <div style="text-align:center; font-size:8.5px; color:#64748b; margin-top:4px;">
+        تطبيق وبوت نور المغرب الإسلامي — ﴿إِنَّ الصَّلَاةَ كَانَتْ عَلَى الْمُومِنِينَ كِتَابًا مَوْقُوتًا﴾
+      </div>
+    </div>
+  </div>
+
+  <!-- Install App (PWA) Modal -->
+  <div id="installModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="glass-card w-full max-w-sm rounded-2xl p-5 space-y-3 text-right">
+      <div class="flex justify-between items-center">
+        <h3 class="font-bold text-amber-300 text-sm">📲 تثبيت تطبيق نور المغرب على الهاتف</h3>
+        <button onclick="closeInstallModal()" class="text-emerald-200 text-lg">✕</button>
+      </div>
+      <p class="text-xs text-emerald-100/90 leading-relaxed">
+        تم تحويل المنصة إلى تطبيق ويب تقدمي (PWA) يعمل بملء الشاشة على هاتفك بأيقونة خاصة مثل تطبيقات المتجر:
+      </p>
+      <div class="space-y-2 text-xs text-emerald-100 bg-emerald-950/80 p-3 rounded-xl border border-amber-400/25">
+        <div>1️⃣ اضغط الزر أدناه لفتح التطبيق في متصفح الهاتف (Chrome أو Safari).</div>
+        <div>2️⃣ إذا ظهر لك زر التثبيت المباشر اضغط <b>تثبيت (Install)</b>، أو من قائمة المتصفح (⋮) اختر <b>الإضافة إلى الشاشة الرئيسية (Add to Home Screen)</b>.</div>
+      </div>
+      <div class="space-y-2 pt-1">
+        <button onclick="triggerNativeInstall()" id="nativeInstallBtn" class="w-full py-2.5 rounded-xl gold-gradient text-emerald-950 font-extrabold text-xs shadow hidden">
+          📥 تثبيت التطبيق مباشرة الآن
+        </button>
+        <button onclick="openInExternalBrowserForInstall()" class="w-full py-2.5 rounded-xl gold-gradient text-emerald-950 font-extrabold text-xs shadow">
+          🌐 فتح في متصفح الهاتف للتثبيت
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Share Modal -->
   <div id="shareModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm hidden items-center justify-center p-4">
     <div class="glass-card w-full max-w-sm rounded-2xl p-5 space-y-3 text-center">
       <div class="flex justify-between items-center">
-        <h3 class="font-bold text-amber-300 text-sm">📤 تقاسم البوت (صدقة جارية)</h3>
+        <h3 class="font-bold text-amber-300 text-sm">📤 تقاسم البوت والتطبيق (صدقة جارية)</h3>
         <button onclick="closeShareModal()" class="text-emerald-200 text-lg">✕</button>
       </div>
-      <p class="text-xs text-emerald-100/80 leading-relaxed">شارك البوت مع أهلك وأصدقائك ليكون لك أجر كل من صلاها في وقتها أو قرأ القرآن برواية ورش.</p>
+      <p class="text-xs text-emerald-100/80 leading-relaxed">شارك البوت أو رابط التطبيق القابل للتثبيت مع أهلك وأصدقائك:</p>
       <div class="space-y-2 pt-1">
         <button onclick="shareViaTelegram()" class="w-full py-2.5 rounded-xl gold-gradient text-emerald-950 font-bold text-xs shadow">
           ✈️ مشاركة عبر تيليجرام
@@ -285,7 +372,7 @@
           💬 مشاركة عبر واتساب
         </button>
         <button onclick="copyBotLink()" id="copyLinkBtn" class="w-full py-2.5 rounded-xl bg-emerald-950/90 text-amber-200 font-semibold text-xs border border-amber-400/30">
-          🔗 نسخ رابط البوت والتطبيق
+          🔗 نسخ الرابط
         </button>
       </div>
     </div>
@@ -304,7 +391,7 @@
     </div>
   </div>
 
-  <!-- Bottom Navigation (5 Tabs) -->
+  <!-- Bottom Navigation -->
   <nav class="fixed bottom-0 inset-x-0 z-40 glass-card border-t border-amber-500/20 flex justify-around text-[11px]">
     <button onclick="switchTab('prayers')" id="nav-prayers" class="flex-1 py-2 flex flex-col items-center gap-0.5 tab-active">
       <span>🕌</span><span>المواقيت</span>
@@ -319,23 +406,38 @@
       <span>🧭</span><span>المسبحة والقبلة</span>
     </button>
     <button onclick="switchTab('settings')" id="nav-settings" class="flex-1 py-2 flex flex-col items-center gap-0.5 text-emerald-200/70">
-      <span>🔔</span><span>المنبه والورد</span>
+      <span>🔔</span><span>الورد والمنبه</span>
     </button>
   </nav>
 
   <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+    let deferredInstallPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredInstallPrompt = e;
+      document.getElementById('nativeInstallBtn')?.classList.remove('hidden');
+    });
+
     const tg = window.Telegram?.WebApp;
     if (tg) { tg.ready(); tg.expand(); }
     const urlParams = new URLSearchParams(window.location.search);
     const chatId = urlParams.get('chat_id') || tg?.initDataUnsafe?.user?.id || '';
 
     let currentCity = localStorage.getItem('noor_city') || 'oujda';
+    let currentCityObj = { id: 'oujda', ar: 'وجدة', en: 'Oujda', region: 'الشرق' };
     let allCities = [];
     let contentData = {};
     let todayTimings = {};
+    let currentMonthlyDays = [];
     let botShareUrl = "{{ bot_share_url }}" || window.location.origin;
     let tasbihCount = parseInt(localStorage.getItem('noor_tasbih') || '0', 10);
-    let khatmaHizb = parseInt(localStorage.getItem('noor_khatma_hizb') || '1', 10);
+
+    // Interactive 60-Hizb state
+    let completedAhzab = JSON.parse(localStorage.getItem('noor_completed_ahzab') || '[]');
+    let selectedHizb = parseInt(localStorage.getItem('noor_selected_hizb') || '1', 10);
 
     const PRAYER_LABELS = [
       { key: 'Fajr', name: 'الفجر', icon: '🌌' },
@@ -349,7 +451,6 @@
     async function initApp() {
       document.getElementById('tasbihCounter').innerText = tasbihCount;
       document.getElementById('monthSelect').value = new Date().getMonth() + 1;
-      renderKhatma();
 
       const [citiesRes, contentRes] = await Promise.all([
         fetch('/api/cities').then(r => r.json()),
@@ -357,6 +458,21 @@
       ]);
       allCities = citiesRes.cities || [];
       contentData = contentRes;
+
+      // Populate multi-voice Adhan selector
+      const voices = contentData.adhan_voices || [];
+      const savedVoice = localStorage.getItem('noor_adhan_voice') || (voices[0]?.url || '');
+      const vSelect = document.getElementById('adhanVoiceSelect');
+      vSelect.innerHTML = voices.map(v =>
+        `<option value="${v.url}" ${v.url === savedVoice ? 'selected' : ''}>🎙 ${v.name}</option>`
+      ).join('');
+      document.getElementById('adhanAudioEl').src = savedVoice || (voices[0]?.url || '');
+
+      // Populate Surahs dropdown
+      const surahs = contentData.surahs || [];
+      document.getElementById('surahSelect').innerHTML = surahs.map(s =>
+        `<option value="${s.number}">${s.number}. سورة ${s.name}</option>`
+      ).join('');
 
       if (chatId) {
         const uRes = await fetch(`/api/user/settings?chat_id=${chatId}`).then(r => r.json());
@@ -369,16 +485,11 @@
         }
       }
 
-      // Populate Surahs dropdown
-      const surahs = contentData.surahs || [];
-      document.getElementById('surahSelect').innerHTML = surahs.map(s =>
-        `<option value="${s.number}">${s.number}. سورة ${s.name}</option>`
-      ).join('');
-
       renderAdhkar('morning');
       renderDuas();
       renderRadios();
       renderAsma();
+      renderInteractiveKhatma();
       loadWarshSurah(1);
 
       if (contentData.inspirations?.length) {
@@ -392,15 +503,38 @@
       if (urlParams.get('tab')) switchTab(urlParams.get('tab'));
     }
 
+    function changeAdhanVoice(url) {
+      localStorage.setItem('noor_adhan_voice', url);
+      const audio = document.getElementById('adhanAudioEl');
+      const wasPlaying = !audio.paused;
+      audio.src = url;
+      if (wasPlaying) audio.play().catch(() => {});
+    }
+
+    function toggleAdhanAudio() {
+      const audio = document.getElementById('adhanAudioEl');
+      const btn = document.getElementById('adhanPlayBtn');
+      if (audio.paused) {
+        audio.play().then(() => {
+          btn.innerText = '⏹ إيقاف';
+        }).catch(() => {});
+      } else {
+        audio.pause();
+        audio.currentTime = 0;
+        btn.innerText = '▶️ استماع';
+      }
+      audio.onended = () => { btn.innerText = '▶️ استماع'; };
+    }
+
     async function loadWarshSurah(snum) {
+      document.getElementById('surahSelect').value = snum;
       const box = document.getElementById('warshVersesContainer');
       box.innerHTML = '⏳ جاري تحميل السورة برواية ورش عن نافع...';
       try {
         const data = await fetch(`/api/quran/warsh/${snum}`).then(r => r.json());
         document.getElementById('surahAudioLabel').innerText =
           `🎧 تلاوة سورة ${data.name} — ${data.reciter}`;
-        const player = document.getElementById('warshSurahPlayer');
-        player.src = data.audio_url;
+        document.getElementById('warshSurahPlayer').src = data.audio_url;
 
         if (!data.verses || !data.verses.length) {
           box.innerHTML = '⚠️ تعذر تحميل الآيات حالياً.';
@@ -422,6 +556,7 @@
       currentCity = cityId;
       localStorage.setItem('noor_city', cityId);
       const data = await fetch(`/api/prayer-times?city=${cityId}`).then(r => r.json());
+      currentCityObj = data.city;
       if (data.bot_share_url) botShareUrl = data.bot_share_url;
       document.getElementById('currentCityName').innerText = data.city.ar;
       document.getElementById('qiblaCityText').innerText = `مدينة ${data.city.ar}`;
@@ -436,49 +571,133 @@
         renderTodayGrid(data.today.timings);
         updateCountdown();
       }
-      renderMonthlyTable(data.monthly || []);
+      currentMonthlyDays = data.monthly || [];
+      renderMonthlyTable(currentMonthlyDays);
     }
 
     async function loadMonthly() {
       const m = document.getElementById('monthSelect').value;
       const y = new Date().getFullYear();
       const data = await fetch(`/api/monthly?city=${currentCity}&year=${y}&month=${m}`).then(r => r.json());
-      renderMonthlyTable(data.days || []);
+      currentMonthlyDays = data.days || [];
+      renderMonthlyTable(currentMonthlyDays);
     }
 
-    async function handlePrintMonthly() {
+    function populateHiddenA4Template() {
+      const mSelect = document.getElementById('monthSelect');
+      const mName = mSelect.options[mSelect.selectedIndex].text;
+      const y = new Date().getFullYear();
+      document.getElementById('pdfHeaderTitle').innerText =
+        `🕌 الحصة الشهرية لمواقيت الصلاة — مدينة ${currentCityObj.ar} (${currentCityObj.region}) — ${mName} ${y}`;
+      document.getElementById('pdfTableRows').innerHTML = currentMonthlyDays.map((d, idx) => `
+        <tr style="background:${idx % 2 === 0 ? '#ffffff' : '#f1f5f9'};">
+          <td style="padding:2.2px; border:1px solid #cbd5e1; font-weight:700;">${d.day}</td>
+          <td style="padding:2.2px; border:1px solid #cbd5e1;">${d.weekday_ar}</td>
+          <td style="padding:2.2px; border:1px solid #cbd5e1;">${d.hijri_day} ${d.hijri_month}</td>
+          <td style="padding:2.2px; border:1px solid #cbd5e1; font-family:monospace;">${d.timings.Fajr}</td>
+          <td style="padding:2.2px; border:1px solid #cbd5e1; font-family:monospace;">${d.timings.Sunrise}</td>
+          <td style="padding:2.2px; border:1px solid #cbd5e1; font-family:monospace;">${d.timings.Dhuhr}</td>
+          <td style="padding:2.2px; border:1px solid #cbd5e1; font-family:monospace;">${d.timings.Asr}</td>
+          <td style="padding:2.2px; border:1px solid #cbd5e1; font-family:monospace;">${d.timings.Maghrib}</td>
+          <td style="padding:2.2px; border:1px solid #cbd5e1; font-family:monospace;">${d.timings.Isha}</td>
+        </tr>
+      `).join('');
+    }
+
+    async function downloadMonthlyPDF() {
       const m = document.getElementById('monthSelect').value;
       const y = new Date().getFullYear();
-      const printUrl = `${window.location.origin}/print-monthly?city=${currentCity}&year=${y}&month=${m}`;
       const toast = document.getElementById('printToast');
+      toast.innerText = '⏳ جاري تجهيز ملف الحصة الشهرية PDF في صفحة واحدة A4...';
+      toast.classList.remove('hidden');
+
+      populateHiddenA4Template();
+      const el = document.getElementById('pdfSinglePageA4');
+      const filename = `Imsakiya_${currentCityObj.en}_${y}_${String(m).padStart(2, '0')}_A4.pdf`;
 
       if (chatId) {
         fetch(`/print-monthly?city=${currentCity}&year=${y}&month=${m}&chat_id=${chatId}&send_tg=1`).catch(() => {});
-        toast.innerText = '✅ تم إرسال ملف الحصة الشهرية الجاهز للطباعة إلى محادثة البوت، وجاري فتح صفحة الطباعة...';
-        toast.classList.remove('hidden');
-        setTimeout(() => toast.classList.add('hidden'), 4500);
       }
-
-      if (tg && tg.openLink) {
-        tg.openLink(printUrl);
-      } else {
-        window.open(printUrl, '_blank');
+      const pdfUrl = `${window.location.origin}/print-monthly?city=${currentCity}&year=${y}&month=${m}&format=pdf`;
+      try {
+        if (tg && tg.openLink) {
+          tg.openLink(pdfUrl);
+          toast.innerText = '✅ تم إرسال ملف PDF (صفحة واحدة A4) إلى محادثة البوت وفتح رابط التحميل المباشر!';
+        } else {
+          const opt = {
+            margin: [4, 4, 4, 4],
+            filename: filename,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            pagebreak: { mode: ['avoid-all'] }
+          };
+          await html2pdf().set(opt).from(el).save();
+          toast.innerText = '✅ تم تحميل ملف PDF (صفحة واحدة A4) بنجاح!';
+        }
+      } catch (e) {
+        window.open(pdfUrl, '_blank');
       }
+      setTimeout(() => toast.classList.add('hidden'), 4000);
     }
 
-    function toggleAdhanAudio() {
-      const audio = document.getElementById('adhanAudioEl');
-      const btn = document.getElementById('adhanPlayBtn');
-      if (audio.paused) {
-        audio.play().then(() => {
-          btn.innerText = '⏹ إيقاف الأذان';
-        }).catch(() => {});
-      } else {
-        audio.pause();
-        audio.currentTime = 0;
-        btn.innerText = '▶️ تشغيل الأذان';
+    function renderInteractiveKhatma() {
+      const hmap = contentData.hizb_map || {};
+      const doneCount = completedAhzab.length;
+      document.getElementById('khatmaBadge').innerText = `${doneCount} / 60 حزب`;
+      document.getElementById('khatmaBar').style.width = `${(doneCount / 60) * 100}%`;
+
+      const info = hmap[String(selectedHizb)] || { surah: 1, label: 'الفاتحة / البقرة' };
+      const isDone = completedAhzab.includes(selectedHizb);
+      document.getElementById('selectedHizbTitle').innerText =
+        `الحزب ${selectedHizb} — سورة ${info.label} ${isDone ? '(مكتمل ✅)' : ''}`;
+      document.getElementById('toggleHizbBtn').innerText = isDone ? '↩️ إلغاء الإتمام' : '✅ إتمام الحزب';
+
+      let html = '';
+      for (let i = 1; i <= 60; i++) {
+        const done = completedAhzab.includes(i);
+        const sel = i === selectedHizb;
+        const cls = done
+          ? 'gold-gradient text-emerald-950 font-extrabold'
+          : 'bg-emerald-950/80 text-emerald-200 border border-amber-400/20';
+        const ring = sel ? 'ring-2 ring-white scale-105' : '';
+        html += `<button onclick="selectHizbCell(${i})" class="h-8 rounded-lg text-xs transition ${cls} ${ring}">${i}</button>`;
       }
-      audio.onended = () => { btn.innerText = '▶️ تشغيل الأذان'; };
+      document.getElementById('hizbGrid60').innerHTML = html;
+    }
+
+    function selectHizbCell(h) {
+      selectedHizb = h;
+      localStorage.setItem('noor_selected_hizb', String(h));
+      renderInteractiveKhatma();
+    }
+
+    function toggleSelectedHizbDone() {
+      if (completedAhzab.includes(selectedHizb)) {
+        completedAhzab = completedAhzab.filter(x => x !== selectedHizb);
+      } else {
+        completedAhzab.push(selectedHizb);
+        if (selectedHizb < 60) selectedHizb += 1;
+      }
+      localStorage.setItem('noor_completed_ahzab', JSON.stringify(completedAhzab));
+      localStorage.setItem('noor_selected_hizb', String(selectedHizb));
+      if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+      renderInteractiveKhatma();
+    }
+
+    function openSelectedHizbInMushaf() {
+      const hmap = contentData.hizb_map || {};
+      const info = hmap[String(selectedHizb)] || { surah: 1 };
+      switchTab('quran');
+      loadWarshSurah(info.surah);
+    }
+
+    function resetKhatmaAll() {
+      completedAhzab = [];
+      selectedHizb = 1;
+      localStorage.setItem('noor_completed_ahzab', '[]');
+      localStorage.setItem('noor_selected_hizb', '1');
+      renderInteractiveKhatma();
     }
 
     function renderTodayGrid(timings) {
@@ -604,17 +823,6 @@
       `).join('');
     }
 
-    function renderKhatma() {
-      document.getElementById('khatmaBadge').innerText = `الحزب ${khatmaHizb} / 60`;
-      document.getElementById('khatmaBar').style.width = `${(khatmaHizb / 60) * 100}%`;
-    }
-
-    function stepKhatma(delta) {
-      khatmaHizb = Math.max(1, Math.min(60, khatmaHizb + delta));
-      localStorage.setItem('noor_khatma_hizb', khatmaHizb);
-      renderKhatma();
-    }
-
     function playRadio(url) {
       const p = document.getElementById('radioPlayer');
       p.src = url;
@@ -637,6 +845,27 @@
 
     function changeTasbihPhrase() { resetTasbih(); }
 
+    function openInstallModal() {
+      document.getElementById('installModal').classList.remove('hidden');
+      document.getElementById('installModal').classList.add('flex');
+    }
+    function closeInstallModal() {
+      document.getElementById('installModal').classList.add('hidden');
+      document.getElementById('installModal').classList.remove('flex');
+    }
+    async function triggerNativeInstall() {
+      if (!deferredInstallPrompt) return;
+      deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice;
+      deferredInstallPrompt = null;
+      closeInstallModal();
+    }
+    function openInExternalBrowserForInstall() {
+      const appUrl = window.location.origin;
+      if (tg && tg.openLink) tg.openLink(appUrl);
+      else window.open(appUrl, '_blank');
+    }
+
     function openShareModal() {
       document.getElementById('shareModal').classList.remove('hidden');
       document.getElementById('shareModal').classList.add('flex');
@@ -646,23 +875,23 @@
       document.getElementById('shareModal').classList.remove('flex');
     }
     function shareViaTelegram() {
-      const text = encodeURIComponent('🌿 بوت نور المغرب الإسلامي: مواقيت الصلاة الرسمية لكل المدن المغربية، المصحف برواية ورش عن نافع، الحصة الشهرية، منبه الأذان، والأذكار:');
+      const text = encodeURIComponent('🌿 تطبيق وبوت نور المغرب الإسلامي: مواقيت الصلاة الرسمية لكل المدن المغربية، المصحف برواية ورش عن نافع، الحصة الشهرية PDF، منبه الأذان، والأذكار:');
       const url = encodeURIComponent(botShareUrl);
       const full = `https://t.me/share/url?url=${url}&text=${text}`;
       if (tg && tg.openTelegramLink) tg.openTelegramLink(full);
       else window.open(full, '_blank');
     }
     function shareViaWhatsApp() {
-      const msg = encodeURIComponent(`🌿 بوت نور المغرب الإسلامي: مواقيت الصلاة الرسمية لكل المدن المغربية، المصحف برواية ورش عن نافع، الحصة الشهرية، منبه الأذان، والأذكار:\n${botShareUrl}`);
+      const msg = encodeURIComponent(`🌿 تطبيق وبوت نور المغرب الإسلامي: مواقيت الصلاة الرسمية لكل المدن المغربية، المصحف برواية ورش عن نافع، الحصة الشهرية PDF، منبه الأذان، والأذكار:\n${botShareUrl}\nرابط تثبيت التطبيق: ${window.location.origin}`);
       const wa = `https://wa.me/?text=${msg}`;
       if (tg && tg.openLink) tg.openLink(wa);
       else window.open(wa, '_blank');
     }
     function copyBotLink() {
-      navigator.clipboard.writeText(botShareUrl).then(() => {
+      navigator.clipboard.writeText(window.location.origin).then(() => {
         const btn = document.getElementById('copyLinkBtn');
         btn.innerText = '✅ تم نسخ الرابط بنجاح!';
-        setTimeout(() => { btn.innerText = '🔗 نسخ رابط البوت والتطبيق'; }, 2000);
+        setTimeout(() => { btn.innerText = '🔗 نسخ الرابط'; }, 2000);
       });
     }
 

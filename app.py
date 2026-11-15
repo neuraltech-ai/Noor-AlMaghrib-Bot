@@ -30,6 +30,8 @@ from islamic_content import (
     ASMA_AL_HUSNA,
     QURAN_RADIOS,
     SURAHS_LIST,
+    ADHAN_VOICES,
+    HIZB_SURAH_MAP,
 )
 
 logging.basicConfig(
@@ -463,6 +465,90 @@ def format_month_chunk(city_id: str, chunk_idx: int) -> tuple:
     return ("\n".join(lines), kb)
 
 
+
+
+def generate_single_page_a4_pdf(city_id: str, year: int, month: int) -> bytes:
+    """Render a crisp 1-page A4 Portrait PDF (1240x1754 px @ 150 DPI) of the monthly timetable."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    city = CITY_BY_ID.get(city_id, CITY_BY_ID["oujda"])
+    days = fetch_monthly_times(city_id, year, month)
+    m_name = MONTH_NAMES_AR.get(month, str(month))
+
+    W, H = 1240, 1754
+    img = Image.new("RGB", (W, H), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+
+    font_paths = [
+        "/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf",
+        "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    ]
+    fp = next((p for p in font_paths if os.path.exists(p)), None)
+    f_title = ImageFont.truetype(fp, 28) if fp else ImageFont.load_default()
+    f_sub = ImageFont.truetype(fp, 19) if fp else ImageFont.load_default()
+    f_th = ImageFont.truetype(fp, 18) if fp else ImageFont.load_default()
+    f_td = ImageFont.truetype(fp, 17) if fp else ImageFont.load_default()
+
+    # Header Box
+    draw.rounded_rectangle([40, 30, W - 40, 135], radius=14, fill=(4, 36, 28), outline=(212, 175, 55), width=3)
+    draw.text((W // 2, 62), f"الحصة الشهرية لمواقيت الصلاة — مدينة {city['ar']} ({city['region']})", fill=(243, 220, 138), font=f_title, anchor="mm")
+    hijri_span = f"{days[0]['hijri_month']} {days[0]['hijri_year']} هـ" if days else ""
+    draw.text((W // 2, 105), f"شهر {m_name} {year} م  |  {hijri_span} — وزارة الأوقاف والشؤون الإسلامية بالمغرب", fill=(230, 245, 238), font=f_sub, anchor="mm")
+
+    # Table Columns (Right-to-Left layout)
+    # Columns from Right to Left: اليوم | الأيام | هجري | الفجر | الشروق | الظهر | العصر | المغرب | العشاء
+    col_Bounds = [
+        (1110, 1200, "اليوم"),
+        (980, 1110, "الأيام"),
+        (800, 980, "التاريخ الهجري"),
+        (675, 800, "الفجر"),
+        (550, 675, "الشروق"),
+        (425, 550, "الظهر"),
+        (300, 425, "العصر"),
+        (170, 300, "المغرب"),
+        (40, 170, "العشاء"),
+    ]
+
+    top_y = 150
+    th_h = 44
+    draw.rectangle([40, top_y, W - 40, top_y + th_h], fill=(8, 51, 40), outline=(4, 36, 28), width=2)
+    for x1, x2, label in col_Bounds:
+        cx = (x1 + x2) // 2
+        draw.text((cx, top_y + th_h // 2), label, fill=(243, 220, 138), font=f_th, anchor="mm")
+        draw.line([(x1, top_y), (x1, top_y + th_h)], fill=(212, 175, 55), width=1)
+
+    row_h = 46
+    cur_y = top_y + th_h
+    for idx, d in enumerate(days[:31]):
+        bg = (255, 255, 255) if idx % 2 == 0 else (241, 246, 244)
+        draw.rectangle([40, cur_y, W - 40, cur_y + row_h], fill=bg, outline=(203, 213, 225), width=1)
+        t = d["timings"]
+        vals = [
+            str(d["day"]),
+            str(d["weekday_ar"]),
+            f"{d['hijri_day']} {d['hijri_month']}",
+            t["Fajr"],
+            t["Sunrise"],
+            t["Dhuhr"],
+            t["Asr"],
+            t["Maghrib"],
+            t["Isha"],
+        ]
+        for (x1, x2, _), val in zip(col_Bounds, vals):
+            cx = (x1 + x2) // 2
+            draw.text((cx, cur_y + row_h // 2), val, fill=(4, 36, 28), font=f_td, anchor="mm")
+            draw.line([(x1, cur_y), (x1, cur_y + row_h)], fill=(203, 213, 225), width=1)
+        cur_y += row_h
+
+    draw.text((W // 2, H - 30), "تطبيق وبوت نور المغرب الإسلامي — المواقيت الرسمية ومصحف رواية ورش عن نافع", fill=(100, 116, 139), font=f_td, anchor="mm")
+
+    out = io.BytesIO()
+    img.save(out, format="PDF", resolution=150.0)
+    return out.getvalue()
+
+
 def build_printable_monthly_html(city_id: str, year: int, month: int) -> str:
     city = CITY_BY_ID.get(city_id, CITY_BY_ID["oujda"])
     days = fetch_monthly_times(city_id, year, month)
@@ -494,8 +580,9 @@ def build_printable_monthly_html(city_id: str, year: int, month: int) -> str:
 <meta charset="UTF-8">
 <title>الحصة الشهرية لمواقيت الصلاة - {city['ar']} - {m_name} {year}</title>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <style>
-  @page {{ size: A4 portrait; margin: 10mm; }}
+  @page {{ size: A4 portrait; margin: 8mm; }}
   body {{ font-family: 'Cairo', sans-serif; color: #04241c; background: #fff; margin: 0; padding: 12px; }}
   .header {{ text-align: center; border: 2px solid #04241c; border-radius: 12px; padding: 10px 16px; margin-bottom: 12px; background: #f7faf8; }}
   .header h1 {{ margin: 0; font-size: 20px; color: #04241c; }}
@@ -512,8 +599,10 @@ def build_printable_monthly_html(city_id: str, year: int, month: int) -> str:
 </head>
 <body>
   <div class="actions">
-    <button class="btn" onclick="window.print()">🖨 طباعة الجدول / حفظ كملف PDF</button>
+    <button class="btn" onclick="downloadSinglePagePDF()">📥 تحميل الحصة الشهرية PDF (صفحة واحدة A4)</button>
+    <button class="btn" style="background:#083328;margin-right:8px;" onclick="window.print()">🖨 طباعة مباشرة</button>
   </div>
+  <div id="a4PageContainer" style="width:190mm;margin:0 auto;background:#fff;padding:2mm;">
   <div class="header">
     <h1>🕌 الحصة الشهرية لمواقيت الصلاة — مدينة {city['ar']} ({city['region']})</h1>
     <p>شهر {m_name} {year} م  |  {hijri_title} — وفق توقيت وزارة الأوقاف والشؤون الإسلامية بالمغرب</p>
@@ -529,8 +618,25 @@ def build_printable_monthly_html(city_id: str, year: int, month: int) -> str:
       {"".join(rows_html)}
     </tbody>
   </table>
-  <div class="footer">تم التوليد عبر تطبيق وبوت نور المغرب الإسلامي</div>
-  <script>setTimeout(() => {{ try {{ window.print(); }} catch(e){{}} }}, 600);</script>
+  <div class="footer">تم التوليد عبر تطبيق وبوت نور المغرب الإسلامي — رواية ورش عن نافع</div>
+  </div>
+  <script>
+    function downloadSinglePagePDF() {{
+      const el = document.getElementById('a4PageContainer');
+      const opt = {{
+        margin: [4, 4, 4, 4],
+        filename: 'Imsakiya_{city["en"]}_{year}_{month:02d}_A4.pdf',
+        image: {{ type: 'jpeg', quality: 0.98 }},
+        html2canvas: {{ scale: 2, useCORS: true }},
+        jsPDF: {{ unit: 'mm', format: 'a4', orientation: 'portrait' }},
+        pagebreak: {{ mode: ['avoid-all'] }}
+      }};
+      html2pdf().set(opt).from(el).save();
+    }}
+    window.addEventListener('load', () => {{
+      setTimeout(() => {{ try {{ downloadSinglePagePDF(); }} catch(e){{}} }}, 500);
+    }});
+  </script>
 </body>
 </html>"""
 
@@ -601,14 +707,14 @@ if bot:
             elif data == "send_print_month":
                 now = datetime.now(MOROCCO_TZ)
                 city = CITY_BY_ID.get(user["city_id"], CITY_BY_ID["oujda"])
-                html_str = build_printable_monthly_html(city["id"], now.year, now.month)
-                doc = io.BytesIO(html_str.encode("utf-8"))
-                doc.name = f"Imsakiya_{city['en']}_{now.year}_{now.month:02d}.html"
-                bot.answer_callback_query(call.id, "📥 جاري إرسال ملف الحصة الشهرية للطباعة...")
+                bot.answer_callback_query(call.id, "📥 جاري توليد ملف PDF (صفحة واحدة A4)...")
+                pdf_bytes = generate_single_page_a4_pdf(city["id"], now.year, now.month)
+                doc = io.BytesIO(pdf_bytes)
+                doc.name = f"Imsakiya_{city['en']}_{now.year}_{now.month:02d}_A4.pdf"
                 bot.send_document(
                     chat_id,
                     doc,
-                    caption=f"🖨 <b>الحصة الشهرية الجاهزة للطباعة — مدينة {city['ar']}</b>\nافتح الملف واضغط طباعة أو حفظ كـ PDF.",
+                    caption=f"📄 <b>الحصة الشهرية لمواقيت الصلاة (PDF صفحة واحدة A4) — مدينة {city['ar']}</b>",
                 )
                 return
 
@@ -985,16 +1091,27 @@ def print_monthly():
     chat_id = request.args.get("chat_id", type=int)
     send_tg = request.args.get("send_tg", "0") == "1"
 
+    if request.args.get("format") == "pdf":
+        city = CITY_BY_ID.get(city_id, CITY_BY_ID["oujda"])
+        pdf_bytes = generate_single_page_a4_pdf(city_id, year, month)
+        fname = f"Imsakiya_{city['en']}_{year}_{month:02d}_A4.pdf"
+        return Response(
+            pdf_bytes,
+            mimetype="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        )
+
     html_str = build_printable_monthly_html(city_id, year, month)
     if send_tg and chat_id and bot:
         try:
             city = CITY_BY_ID.get(city_id, CITY_BY_ID["oujda"])
-            doc = io.BytesIO(html_str.encode("utf-8"))
-            doc.name = f"Imsakiya_{city['en']}_{year}_{month:02d}.html"
+            pdf_bytes = generate_single_page_a4_pdf(city_id, year, month)
+            doc = io.BytesIO(pdf_bytes)
+            doc.name = f"Imsakiya_{city['en']}_{year}_{month:02d}_A4.pdf"
             bot.send_document(
                 chat_id,
                 doc,
-                caption=f"🖨 <b>الحصة الشهرية الجاهزة للطباعة — مدينة {city['ar']}</b>\nافتح الملف واضغط طباعة أو حفظ كـ PDF.",
+                caption=f"📄 <b>الحصة الشهرية لمواقيت الصلاة (PDF صفحة واحدة A4) — مدينة {city['ar']}</b>",
             )
             return jsonify({"ok": True})
         except Exception as e:
@@ -1055,9 +1172,72 @@ def api_content():
             "inspirations": DAILY_INSPIRATIONS,
             "asma": ASMA_AL_HUSNA,
             "radios": QURAN_RADIOS,
+            "adhan_voices": ADHAN_VOICES,
+            "hizb_map": {str(k): {"surah": v[0], "label": v[1]} for k, v in HIZB_SURAH_MAP.items()},
             "surahs": [{"number": n, "name": name} for n, name in SURAHS_LIST],
         }
     )
+
+
+@app.route("/icon.svg")
+def app_icon_svg():
+    svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+      <defs>
+        <radialGradient id="bg" cx="50%" cy="30%" r="75%">
+          <stop offset="0%" stop-color="#0a3d30"/>
+          <stop offset="100%" stop-color="#031914"/>
+        </radialGradient>
+        <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#f3dc8a"/>
+          <stop offset="50%" stop-color="#d4af37"/>
+          <stop offset="100%" stop-color="#9a7215"/>
+        </linearGradient>
+      </defs>
+      <rect width="512" height="512" rx="110" fill="url(#bg)"/>
+      <circle cx="256" cy="256" r="210" fill="none" stroke="url(#gold)" stroke-width="10" opacity="0.85"/>
+      <path d="M225 140 h62 v220 h-62 z" fill="url(#gold)"/>
+      <path d="M238 105 h36 v35 h-36 z" fill="url(#gold)"/>
+      <circle cx="256" cy="92" r="10" fill="#f3dc8a"/>
+      <path d="M160 360 h192 v24 h-192 z" fill="url(#gold)"/>
+      <path d="M180 215 a85 85 0 1 0 140 90 a70 70 0 1 1 -140 -90 z" fill="#f3dc8a" opacity="0.85"/>
+    </svg>'''
+    return Response(svg, mimetype="image/svg+xml")
+
+
+@app.route("/manifest.json")
+def pwa_manifest():
+    manifest = {
+        "name": "نور المغرب — المواقيت ومصحف ورش",
+        "short_name": "نور المغرب",
+        "description": "مواقيت الصلاة الرسمية بالمغرب، الحصة الشهرية PDF، المصحف برواية ورش، الأذان، والأذكار",
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#031914",
+        "theme_color": "#04241c",
+        "lang": "ar",
+        "dir": "rtl",
+        "icons": [
+            {"src": "/icon.svg", "sizes": "192x192 512x512", "type": "image/svg+xml", "purpose": "any maskable"}
+        ],
+    }
+    return jsonify(manifest)
+
+
+@app.route("/sw.js")
+def pwa_sw():
+    sw_js = """const CACHE_NAME = 'noor-maghrib-v3';
+const ASSETS = ['/', '/manifest.json', '/icon.svg', '/api/cities', '/api/content'];
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+});
+self.addEventListener('activate', e => {
+  e.waitUntil(self.clients.claim());
+});
+self.addEventListener('fetch', e => {
+  e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+});
+"""
+    return Response(sw_js, mimetype="application/javascript")
 
 
 @app.route("/api/user/settings", methods=["GET", "POST"])
