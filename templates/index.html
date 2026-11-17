@@ -143,9 +143,11 @@
           <table class="w-full text-center text-xs">
             <thead class="bg-emerald-950/90 text-amber-300 sticky top-0">
               <tr>
-                <th class="py-2 px-1.5">اليوم</th>
+                <th class="py-2 px-1">اليوم</th>
+                <th class="py-2 px-1">الأيام</th>
                 <th class="py-2 px-1">هجري</th>
                 <th class="py-2 px-1">الفجر</th>
+                <th class="py-2 px-1">الشروق</th>
                 <th class="py-2 px-1">الظهر</th>
                 <th class="py-2 px-1">العصر</th>
                 <th class="py-2 px-1">المغرب</th>
@@ -196,6 +198,30 @@
         <h3 class="text-sm font-bold text-amber-300">🤲 أدعية مختارة من الكتاب والسنة</h3>
         <div id="duasList" class="space-y-2.5"></div>
       </div>
+    </section>
+
+    <!-- TAB SEERAH & PROPHETS IN QURAN -->
+    <section id="tab-seerah" class="hidden space-y-4">
+      <!-- Sub-navigation pills -->
+      <div class="grid grid-cols-2 gap-2">
+        <button id="pill-seerah" onclick="switchSeerahSubTab('seerah')" class="py-2.5 px-3 rounded-xl text-xs font-extrabold gold-gradient text-emerald-950 shadow">
+          📜 السيرة النبوية الشريفة
+        </button>
+        <button id="pill-prophets" onclick="switchSeerahSubTab('prophets')" class="py-2.5 px-3 rounded-xl text-xs font-extrabold glass-card text-amber-200 border border-amber-400/30">
+          🌟 قصص الأنبياء في القرآن
+        </button>
+      </div>
+
+      <!-- Verification Banner -->
+      <div class="glass-card rounded-2xl p-3 border border-amber-400/30 text-[11px] text-emerald-100/90 leading-relaxed">
+        ✅ <b class="text-amber-300">توثيق علمي مدقق:</b> جميع الفصول والقصص معتمدة حصراً على <b>القرآن الكريم (برواية ورش)</b> و<b>الصحيحين (البخاري ومسلم)</b> ومؤلفات أئمة الإسلام المعتمدين (<b>سيرة ابن هشام</b>، <b>زاد المعاد لابن القيم</b>، <b>الفصول في سيرة الرسول وقصص الأنبياء للحافظ ابن كثير</b>، و<b>تفسير السعدي</b>)، وهي منقّاة تماماً من الإسرائيليات والروايات الضعيفة أو الموضوعة.
+      </div>
+
+      <!-- Seerah Chapters Container -->
+      <div id="seerahChaptersList" class="space-y-3"></div>
+
+      <!-- Prophets Stories Container -->
+      <div id="prophetsStoriesList" class="hidden space-y-3"></div>
     </section>
 
     <!-- TAB 4: TASBIH, QIBLA & ASMA -->
@@ -392,18 +418,21 @@
   </div>
 
   <!-- Bottom Navigation -->
-  <nav class="fixed bottom-0 inset-x-0 z-40 glass-card border-t border-amber-500/20 flex justify-around text-[11px]">
+  <nav class="fixed bottom-0 inset-x-0 z-40 glass-card border-t border-amber-500/20 flex justify-around text-[10px]">
     <button onclick="switchTab('prayers')" id="nav-prayers" class="flex-1 py-2 flex flex-col items-center gap-0.5 tab-active">
       <span>🕌</span><span>المواقيت</span>
     </button>
     <button onclick="switchTab('quran')" id="nav-quran" class="flex-1 py-2 flex flex-col items-center gap-0.5 text-emerald-200/70">
       <span>📖</span><span>مصحف ورش</span>
     </button>
+    <button onclick="switchTab('seerah')" id="nav-seerah" class="flex-1 py-2 flex flex-col items-center gap-0.5 text-emerald-200/70">
+      <span>📜</span><span>السيرة والأنبياء</span>
+    </button>
     <button onclick="switchTab('adhkar')" id="nav-adhkar" class="flex-1 py-2 flex flex-col items-center gap-0.5 text-emerald-200/70">
       <span>📿</span><span>الأذكار</span>
     </button>
     <button onclick="switchTab('tools')" id="nav-tools" class="flex-1 py-2 flex flex-col items-center gap-0.5 text-emerald-200/70">
-      <span>🧭</span><span>المسبحة والقبلة</span>
+      <span>🧭</span><span>القبلة</span>
     </button>
     <button onclick="switchTab('settings')" id="nav-settings" class="flex-1 py-2 flex flex-col items-center gap-0.5 text-emerald-200/70">
       <span>🔔</span><span>الورد والمنبه</span>
@@ -508,6 +537,7 @@
       renderDuas();
       renderRadios();
       renderAsma();
+      renderSeerahAndProphets();
       renderInteractiveKhatma();
       loadWarshSurah(1);
 
@@ -738,9 +768,11 @@
         const isToday = isCurMonth && d.day === todayNum;
         return `
           <tr class="${isToday ? 'bg-amber-500/20 font-bold text-amber-200' : 'hover:bg-emerald-900/30'}">
-            <td class="py-1.5 px-1.5">${d.day}</td>
-            <td class="py-1.5 px-1 text-emerald-200/80">${d.hijri_day} ${d.hijri_month}</td>
+            <td class="py-1.5 px-1">${d.day}</td>
+            <td class="py-1.5 px-1 text-amber-100 whitespace-nowrap">${d.weekday_ar || ''}</td>
+            <td class="py-1.5 px-1 text-emerald-200/80 whitespace-nowrap">${d.hijri_day} ${d.hijri_month}</td>
             <td class="py-1.5 px-1 font-mono">${d.timings.Fajr}</td>
+            <td class="py-1.5 px-1 font-mono text-amber-200/90">${d.timings.Sunrise}</td>
             <td class="py-1.5 px-1 font-mono">${d.timings.Dhuhr}</td>
             <td class="py-1.5 px-1 font-mono">${d.timings.Asr}</td>
             <td class="py-1.5 px-1 font-mono">${d.timings.Maghrib}</td>
@@ -963,8 +995,67 @@
       setTimeout(() => msg.classList.add('hidden'), 2500);
     }
 
+    function renderSeerahAndProphets() {
+      const seerah = contentData.seerah || [];
+      document.getElementById('seerahChaptersList').innerHTML = seerah.map((item, i) => `
+        <div class="glass-card rounded-2xl p-4 space-y-2.5 border border-amber-400/25">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/30">${item.era}</span>
+            <span class="text-xs text-emerald-300 font-bold">الفصل ${i + 1}</span>
+          </div>
+          <h4 class="text-base font-extrabold text-amber-300">${item.title}</h4>
+          <p class="text-xs text-emerald-50 leading-relaxed text-justify">${item.summary}</p>
+          <div class="bg-emerald-950/75 rounded-xl p-3 border border-amber-400/20 space-y-1">
+            <div class="text-[11px] font-bold text-amber-200">📖 الدليل من القرآن والسنة الصحيحة:</div>
+            <p class="font-quran text-base text-amber-100 leading-relaxed">${item.evidence}</p>
+          </div>
+          <div class="text-xs text-emerald-200/90 pt-1">
+            💎 <b class="text-amber-200">فقه السيرة والعبر:</b> ${item.lessons}
+          </div>
+          <div class="text-[10px] text-emerald-300/75 pt-1 border-t border-emerald-800/60">
+            📚 <b>المصادر المحققة:</b> ${item.scholars_ref}
+          </div>
+        </div>
+      `).join('');
+
+      const prophets = contentData.prophets_stories || [];
+      document.getElementById('prophetsStoriesList').innerHTML = prophets.map((p, i) => `
+        <div class="glass-card rounded-2xl p-4 space-y-2.5 border border-amber-400/25">
+          <div class="flex items-center justify-between">
+            <h4 class="text-base font-extrabold text-amber-300">🌟 ${p.name}</h4>
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-900 text-amber-200 border border-amber-400/30">من القرآن الكريم</span>
+          </div>
+          <p class="text-xs text-emerald-50 leading-relaxed text-justify">${p.story}</p>
+          <div class="bg-emerald-950/75 rounded-xl p-3 border border-amber-400/20 space-y-1">
+            <div class="text-[11px] font-bold text-amber-200">📖 من آيات القصة في القرآن (رواية ورش):</div>
+            <p class="font-quran text-base text-amber-100 leading-relaxed">${p.quran_ayah}</p>
+          </div>
+          <div class="text-xs text-emerald-200/90 pt-1">
+            💎 <b class="text-amber-200">الفوائد والعبر العقدية:</b> ${p.benefit}
+          </div>
+          <div class="text-[10px] text-emerald-300/75 pt-1 border-t border-emerald-800/60">
+            📚 <b>المواضع القرآنية والمصادر:</b> ${p.surahs_ref}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function switchSeerahSubTab(sub) {
+      const isSeerah = sub === 'seerah';
+      document.getElementById('seerahChaptersList').classList.toggle('hidden', !isSeerah);
+      document.getElementById('prophetsStoriesList').classList.toggle('hidden', isSeerah);
+      const pS = document.getElementById('pill-seerah');
+      const pP = document.getElementById('pill-prophets');
+      pS.className = isSeerah
+        ? 'py-2.5 px-3 rounded-xl text-xs font-extrabold gold-gradient text-emerald-950 shadow'
+        : 'py-2.5 px-3 rounded-xl text-xs font-extrabold glass-card text-amber-200 border border-amber-400/30';
+      pP.className = !isSeerah
+        ? 'py-2.5 px-3 rounded-xl text-xs font-extrabold gold-gradient text-emerald-950 shadow'
+        : 'py-2.5 px-3 rounded-xl text-xs font-extrabold glass-card text-amber-200 border border-amber-400/30';
+    }
+
     function switchTab(tab) {
-      ['prayers', 'quran', 'adhkar', 'tools', 'settings'].forEach(t => {
+      ['prayers', 'quran', 'seerah', 'adhkar', 'tools', 'settings'].forEach(t => {
         document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== tab);
         const nav = document.getElementById(`nav-${t}`);
         nav.classList.toggle('tab-active', t === tab);

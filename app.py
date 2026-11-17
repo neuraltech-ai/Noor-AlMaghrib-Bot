@@ -32,6 +32,8 @@ from islamic_content import (
     SURAHS_LIST,
     ADHAN_VOICES,
     HIZB_SURAH_MAP,
+    SEERAH_DATA,
+    PROPHETS_STORIES_DATA,
 )
 
 logging.basicConfig(
@@ -371,6 +373,10 @@ def main_menu_markup(chat_id: int = None):
         types.InlineKeyboardButton("📻 إذاعات ورش", callback_data="radio_menu"),
     )
     kb.add(
+        types.InlineKeyboardButton("📜 السيرة النبوية الشريفة", callback_data="seerah_menu"),
+        types.InlineKeyboardButton("🌟 قصص الأنبياء في القرآن", callback_data="prophets_menu"),
+    )
+    kb.add(
         types.InlineKeyboardButton("📿 الأذكار اليومية", callback_data="adhkar_menu"),
         types.InlineKeyboardButton("🤲 الأدعية المختارة", callback_data="duas_menu"),
     )
@@ -435,14 +441,16 @@ def format_month_chunk(city_id: str, chunk_idx: int) -> tuple:
     lines = [
         f"📅 <b>الحصة الشهرية لمواقيت الصلاة — {city['ar']}</b>",
         f"🗓 شهر {now.month:02d}/{now.year} (الأيام {start_d} - {min(end_d, len(days))})",
-        "<code>يوم | فجر  | ظهر  | عصر  | مغرب | عشاء </code>",
-        "<code>────┼──────┼──────┼──────┼──────┼──────</code>",
+        "<code>يوم والتاريخ | فجر  | شروق | ظهر  | عصر  | مغرب | عشاء</code>",
+        "<code>─────────────┼──────┼──────┼──────┼──────┼──────┼─────</code>",
     ]
     for d in subset:
         t = d["timings"]
-        mark = "◀" if d["day"] == now.day else " "
+        mark = "◀" if d["day"] == now.day else ""
+        wday = (d.get("weekday_ar") or "")[:7]
         lines.append(
-            f"<code>{d['day']:02d}{mark} |{t['Fajr']} |{t['Dhuhr']} |{t['Asr']} |{t['Maghrib']} |{t['Isha']}</code>"
+            f"<b>{d['day']:02d} {wday}{mark}</b>\n"
+            f"<code>{t['Fajr']} |{t['Sunrise']} |{t['Dhuhr']} |{t['Asr']} |{t['Maghrib']} |{t['Isha']}</code>"
         )
 
     kb = types.InlineKeyboardMarkup(row_width=3)
@@ -916,6 +924,93 @@ if bot:
                 kb.add(types.InlineKeyboardButton("🔙 فهرس سور مصحف ورش", callback_data=f"warsh_menu_{(snum - 1) // 15}"))
                 bot.edit_message_text(text, chat_id, msg_id, reply_markup=kb, disable_web_page_preview=True)
 
+            elif data == "seerah_menu":
+                kb = types.InlineKeyboardMarkup(row_width=1)
+                for idx, item in enumerate(SEERAH_DATA):
+                    kb.add(types.InlineKeyboardButton(f"📜 {idx + 1}. {item['title']}", callback_data=f"seerah_{idx}"))
+                if WEBAPP_URL:
+                    kb.add(
+                        types.InlineKeyboardButton(
+                            "📱 فتح جناح السيرة وقصص الأنبياء في التطبيق",
+                            web_app=types.WebAppInfo(url=f"{WEBAPP_URL}/?tab=seerah"),
+                        )
+                    )
+                kb.add(types.InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="home"))
+                bot.edit_message_text(
+                    "📜 <b>جناح السيرة النبوية الشريفة</b>\n"
+                    "<i>معتمدة ومحققة من الصحيحين (البخاري ومسلم)، سيرة ابن هشام، زاد المعاد لابن القيم، والفصول في سيرة الرسول للحافظ ابن كثير:</i>",
+                    chat_id,
+                    msg_id,
+                    reply_markup=kb,
+                )
+
+            elif data.startswith("seerah_"):
+                idx = int(data.split("_")[1])
+                idx = max(0, min(len(SEERAH_DATA) - 1, idx))
+                item = SEERAH_DATA[idx]
+                text = (
+                    f"📜 <b>{item['title']}</b>\n"
+                    f"🕰 <i>{item['era']}</i>\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"{item['summary']}\n\n"
+                    f"📖 <b>الدليل من القرآن والسنة الصحيحة:</b>\n{item['evidence']}\n\n"
+                    f"💎 <b>من فقه السيرة والعبر:</b>\n{item['lessons']}\n\n"
+                    f"📚 <b>المصادر المعتمدة:</b> {item['scholars_ref']}"
+                )
+                kb = types.InlineKeyboardMarkup(row_width=2)
+                nav = []
+                if idx > 0:
+                    nav.append(types.InlineKeyboardButton("⬅️ الفصل السابق", callback_data=f"seerah_{idx - 1}"))
+                if idx < len(SEERAH_DATA) - 1:
+                    nav.append(types.InlineKeyboardButton("الفصل التالي ➡️", callback_data=f"seerah_{idx + 1}"))
+                if nav:
+                    kb.add(*nav)
+                kb.add(types.InlineKeyboardButton("🔙 فهرس السيرة النبوية", callback_data="seerah_menu"))
+                bot.edit_message_text(text, chat_id, msg_id, reply_markup=kb)
+
+            elif data == "prophets_menu":
+                kb = types.InlineKeyboardMarkup(row_width=1)
+                for idx, p in enumerate(PROPHETS_STORIES_DATA):
+                    kb.add(types.InlineKeyboardButton(f"🌟 {p['name']}", callback_data=f"prophet_{idx}"))
+                if WEBAPP_URL:
+                    kb.add(
+                        types.InlineKeyboardButton(
+                            "📱 فتح قصص الأنبياء في التطبيق التفاعلي",
+                            web_app=types.WebAppInfo(url=f"{WEBAPP_URL}/?tab=seerah"),
+                        )
+                    )
+                kb.add(types.InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="home"))
+                bot.edit_message_text(
+                    "🌟 <b>قصص الأنبياء في القرآن الكريم</b>\n"
+                    "<i>صافية خالية من الإسرائيليات والأكاذيب — معتمدة على آيات القرآن الكريم والصحيحين وقصص الأنبياء للحافظ ابن كثير وتفسير الشيخ السعدي:</i>",
+                    chat_id,
+                    msg_id,
+                    reply_markup=kb,
+                )
+
+            elif data.startswith("prophet_"):
+                idx = int(data.split("_")[1])
+                idx = max(0, min(len(PROPHETS_STORIES_DATA) - 1, idx))
+                p = PROPHETS_STORIES_DATA[idx]
+                text = (
+                    f"🌟 <b>{p['name']}</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"{p['story']}\n\n"
+                    f"📖 <b>من آيات القصة في القرآن الكريم (برواية ورش):</b>\n{p['quran_ayah']}\n\n"
+                    f"💎 <b>العبر والفوائد العقدية والتربوية:</b>\n{p['benefit']}\n\n"
+                    f"📚 <b>المواضع القرآنية والمصادر:</b> {p['surahs_ref']}"
+                )
+                kb = types.InlineKeyboardMarkup(row_width=2)
+                nav = []
+                if idx > 0:
+                    nav.append(types.InlineKeyboardButton("⬅️ القصة السابقة", callback_data=f"prophet_{idx - 1}"))
+                if idx < len(PROPHETS_STORIES_DATA) - 1:
+                    nav.append(types.InlineKeyboardButton("القصة التالية ➡️", callback_data=f"prophet_{idx + 1}"))
+                if nav:
+                    kb.add(*nav)
+                kb.add(types.InlineKeyboardButton("🔙 فهرس قصص الأنبياء", callback_data="prophets_menu"))
+                bot.edit_message_text(text, chat_id, msg_id, reply_markup=kb)
+
             elif data == "adhkar_menu":
                 kb = types.InlineKeyboardMarkup(row_width=2)
                 for key, val in ADHKAR_DATA.items():
@@ -1311,6 +1406,8 @@ def api_content():
             "asma": ASMA_AL_HUSNA,
             "radios": QURAN_RADIOS,
             "adhan_voices": ADHAN_VOICES,
+            "seerah": SEERAH_DATA,
+            "prophets_stories": PROPHETS_STORIES_DATA,
             "hizb_map": {str(k): {"surah": v[0], "label": v[1]} for k, v in HIZB_SURAH_MAP.items()},
             "surahs": [{"number": n, "name": name} for n, name in SURAHS_LIST],
         }
@@ -1363,7 +1460,7 @@ def pwa_manifest():
 
 @app.route("/sw.js")
 def pwa_sw():
-    sw_js = """const CACHE_NAME = 'noor-maghrib-v4';
+    sw_js = """const CACHE_NAME = 'noor-maghrib-v5';
 const ASSETS = ['/', '/manifest.json', '/icon.svg', '/api/cities', '/api/content'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
