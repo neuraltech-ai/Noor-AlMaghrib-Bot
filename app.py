@@ -83,9 +83,67 @@ ALERT_PRAYERS = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
 
 
 # ---------------------------------------------------------------------------
-# Database Layer (SQLite)
+# Database Layer: Upstash Redis / Vercel Storage (Permanent Cloud) + SQLite Fallback
 # ---------------------------------------------------------------------------
+REDIS_URL = (os.environ.get("KV_REST_API_URL") or os.environ.get("UPSTASH_REDIS_REST_URL") or "").strip().rstrip("/")
+REDIS_TOKEN = (os.environ.get("KV_REST_API_TOKEN") or os.environ.get("UPSTASH_REDIS_REST_TOKEN") or "").strip()
+USE_REDIS = bool(REDIS_URL and REDIS_TOKEN)
+
+ALLOWED_USER_FIELDS = {
+    "city_id",
+    "alerts_enabled",
+    "pre_alert_mins",
+    "adhkar_alerts",
+    "kahf_alert",
+    "fajr_alert",
+    "dhuhr_alert",
+    "asr_alert",
+    "maghrib_alert",
+    "isha_alert",
+    "tasbih_count",
+    "tasbih_phrase_idx",
+}
+
+
+def _default_user_dict(chat_id: int) -> dict:
+    return {
+        "chat_id": int(chat_id),
+        "city_id": "oujda",
+        "alerts_enabled": 1,
+        "pre_alert_mins": 10,
+        "adhkar_alerts": 1,
+        "kahf_alert": 1,
+        "fajr_alert": 1,
+        "dhuhr_alert": 1,
+        "asr_alert": 1,
+        "maghrib_alert": 1,
+        "isha_alert": 1,
+        "tasbih_count": 0,
+        "tasbih_phrase_idx": 0,
+        "updated_at": datetime.now(MOROCCO_TZ).isoformat(),
+    }
+
+
+def _redis_cmd(*args):
+    """Execute a single Upstash Redis REST command via HTTP POST (zero extra dependencies)."""
+    try:
+        resp = requests.post(
+            REDIS_URL,
+            headers={"Authorization": f"Bearer {REDIS_TOKEN}", "Content-Type": "application/json"},
+            json=list(args),
+            timeout=6,
+        )
+        resp.raise_for_status()
+        return resp.json().get("result")
+    except Exception as e:
+        logger.error("Redis REST error (%s): %s", args[0] if args else "", e)
+        return None
+
+
 def init_db():
+    if USE_REDIS:
+        logger.info("Using Upstash Redis / Vercel Storage for permanent multi-user persistence.")
+        return
     with DB_LOCK:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
@@ -124,6 +182,21 @@ def init_db():
 
 
 def get_user(chat_id: int) -> dict:
+    chat_id = int(chat_id)
+    if USE_REDIS:
+        raw = _redis_cmd("HGET", "noor:users", str(chat_id))
+        if raw:
+            try:
+                data = _default_user_dict(chat_id)
+                data.update(json.loads(raw))
+                data["chat_id"] = chat_id
+                return data
+            except Exception:
+                pass
+        data = _default_user_dict(chat_id)
+        _redis_cmd("HSET", "noor:users", str(chat_id), json.dumps(data, ensure_ascii=False))
+        return data
+
     with DB_LOCK:
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
@@ -147,25 +220,19 @@ def get_user(chat_id: int) -> dict:
 def update_user(chat_id: int, **kwargs):
     if not kwargs:
         return
-    get_user(chat_id)
-    allowed = {
-        "city_id",
-        "alerts_enabled",
-        "pre_alert_mins",
-        "adhkar_alerts",
-        "kahf_alert",
-        "fajr_alert",
-        "dhuhr_alert",
-        "asr_alert",
-        "maghrib_alert",
-        "isha_alert",
-        "tasbih_count",
-        "tasbih_phrase_idx",
-    }
-    updates = {k: v for k, v in kwargs.items() if k in allowed}
+    chat_id = int(chat_id)
+    updates = {k: v for k, v in kwargs.items() if k in ALLOWED_USER_FIELDS}
     if not updates:
         return
     updates["updated_at"] = datetime.now(MOROCCO_TZ).isoformat()
+
+    if USE_REDIS:
+        user = get_user(chat_id)
+        user.update(updates)
+        _redis_cmd("HSET", "noor:users", str(chat_id), json.dumps(user, ensure_ascii=False))
+        return
+
+    get_user(chat_id)
     cols = ", ".join(f"{k} = ?" for k in updates.keys())
     vals = list(updates.values()) + [chat_id]
     with DB_LOCK:
@@ -176,6 +243,28 @@ def update_user(chat_id: int, **kwargs):
 
 
 def get_all_subscribed_users() -> list:
+    if USE_REDIS:
+        raw_list = _redis_cmd("HGETALL", "noor:users")
+        users = []
+        if isinstance(raw_list, list):
+            # Upstash REST HGETALL returns [k1, v1, k2, v2, ...]
+            for i in range(0, len(raw_list) - 1, 2):
+                try:
+                    u = json.loads(raw_list[i + 1])
+                    if u.get("alerts_enabled", 1):
+                        users.append(u)
+                except Exception:
+                    pass
+        elif isinstance(raw_list, dict):
+            for v in raw_list.values():
+                try:
+                    u = json.loads(v) if isinstance(v, str) else v
+                    if u.get("alerts_enabled", 1):
+                        users.append(u)
+                except Exception:
+                    pass
+        return users
+
     with DB_LOCK:
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
@@ -185,6 +274,10 @@ def get_all_subscribed_users() -> list:
 
 
 def mark_alert_sent(chat_id: int, alert_key: str) -> bool:
+    if USE_REDIS:
+        res = _redis_cmd("SET", f"noor:sent:{chat_id}:{alert_key}", "1", "EX", "172800", "NX")
+        return res == "OK"
+
     with DB_LOCK:
         conn = sqlite3.connect(DB_PATH)
         try:
@@ -1477,7 +1570,11 @@ def api_cron_alarms():
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok", "time": datetime.now(MOROCCO_TZ).isoformat()}), 200
+    return jsonify({
+        "status": "ok",
+        "storage": "upstash_redis_cloud" if USE_REDIS else "local_sqlite",
+        "time": datetime.now(MOROCCO_TZ).isoformat()
+    }), 200
 
 
 @app.route("/print-monthly")
