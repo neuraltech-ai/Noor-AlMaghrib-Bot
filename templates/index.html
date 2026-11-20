@@ -634,7 +634,9 @@
     const tg = window.Telegram?.WebApp;
     if (tg) { tg.ready(); tg.expand(); }
     const urlParams = new URLSearchParams(window.location.search);
-    const chatId = urlParams.get('chat_id') || tg?.initDataUnsafe?.user?.id || '';
+    const rawChatId = urlParams.get('chat_id') || tg?.initDataUnsafe?.user?.id || '';
+    if (rawChatId) localStorage.setItem('noor_chat_id', String(rawChatId));
+    const chatId = rawChatId || localStorage.getItem('noor_chat_id') || '';
 
     let currentCity = localStorage.getItem('noor_city') || 'oujda';
     let currentCityObj = { id: 'oujda', ar: 'وجدة', en: 'Oujda', region: 'الشرق' };
@@ -684,15 +686,29 @@
         `<option value="${s.number}">${s.number}. سورة ${s.name}</option>`
       ).join('');
 
-      if (chatId) {
-        const uRes = await fetch(`/api/user/settings?chat_id=${chatId}`).then(r => r.json());
-        if (uRes.user) {
-          currentCity = uRes.user.city_id || currentCity;
-          document.getElementById('setAlerts').checked = !!uRes.user.alerts_enabled;
-          document.getElementById('setPreAlert').checked = (uRes.user.pre_alert_mins || 0) > 0;
-          document.getElementById('setAdhkar').checked = !!uRes.user.adhkar_alerts;
-          document.getElementById('setKahf').checked = !!uRes.user.kahf_alert;
+      // Restore saved alarm toggles from localStorage immediately (Chrome / PWA / offline)
+      try {
+        const localSet = JSON.parse(localStorage.getItem('noor_alarm_settings') || 'null');
+        if (localSet) {
+          document.getElementById('setAlerts').checked = !!localSet.alerts_enabled;
+          document.getElementById('setPreAlert').checked = (localSet.pre_alert_mins || 0) > 0;
+          document.getElementById('setAdhkar').checked = !!localSet.adhkar_alerts;
+          document.getElementById('setKahf').checked = !!localSet.kahf_alert;
         }
+      } catch (e) {}
+
+      if (chatId) {
+        try {
+          const uRes = await fetch(`/api/user/settings?chat_id=${chatId}`).then(r => r.json());
+          if (uRes.user) {
+            currentCity = uRes.user.city_id || currentCity;
+            document.getElementById('setAlerts').checked = !!uRes.user.alerts_enabled;
+            document.getElementById('setPreAlert').checked = (uRes.user.pre_alert_mins || 0) > 0;
+            document.getElementById('setAdhkar').checked = !!uRes.user.adhkar_alerts;
+            document.getElementById('setKahf').checked = !!uRes.user.kahf_alert;
+            localStorage.setItem('noor_alarm_settings', JSON.stringify(uRes.user));
+          }
+        } catch (e) {}
       }
 
       renderAdhkar('morning');
@@ -1144,11 +1160,16 @@
         adhkar_alerts: document.getElementById('setAdhkar').checked ? 1 : 0,
         kahf_alert: document.getElementById('setKahf').checked ? 1 : 0,
       };
-      await fetch('/api/user/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      localStorage.setItem('noor_alarm_settings', JSON.stringify(payload));
+      if (chatId) {
+        try {
+          await fetch('/api/user/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+        } catch (e) {}
+      }
       const msg = document.getElementById('settingsSavedMsg');
       msg.classList.remove('hidden');
       setTimeout(() => msg.classList.add('hidden'), 2500);
