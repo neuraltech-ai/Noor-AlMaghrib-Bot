@@ -825,6 +825,14 @@ if bot:
             reply_markup=main_menu_markup(message.chat.id),
         )
 
+    @bot.message_handler(commands=["myid"])
+    def handle_myid(message):
+        bot.send_message(
+            message.chat.id,
+            f"🆔 معرّف حسابك (Chat ID): <code>{message.chat.id}</code>\n"
+            f"يمكنك وضعه في متغير <code>ALERT_CHAT_IDS</code> على Vercel بصيغة: <code>{message.chat.id}:oujda</code>",
+        )
+
     @bot.message_handler(commands=["month"])
     def handle_month_cmd(message):
         user = get_user(message.chat.id)
@@ -1309,6 +1317,162 @@ def bot_polling_loop():
 @app.route("/")
 def index():
     return render_template("index.html", bot_share_url=get_bot_share_url())
+
+
+
+
+# ---------------------------------------------------------------------------
+# Vercel Serverless Telegram Webhook & 24/7 Alarm Cron Endpoints (No Render Needed!)
+# ---------------------------------------------------------------------------
+def _run_alarm_check_once() -> dict:
+    """Single pass of the prayer alarm check (works on Vercel via cron-job.org)."""
+    if not bot:
+        return {"ok": False, "reason": "BOT_TOKEN not set"}
+    now = datetime.now(MOROCCO_TZ)
+    now_hm = now.strftime("%H:%M")
+    today_str = now.strftime("%Y-%m-%d")
+
+    users = get_all_subscribed_users()
+    # Also support permanent env-var subscribers on Vercel: ALERT_CHAT_IDS="123456:oujda,789012:rabat"
+    env_subs = os.environ.get("ALERT_CHAT_IDS", "").strip()
+    existing_ids = {u["chat_id"] for u in users}
+    if env_subs:
+        for entry in env_subs.split(","):
+            entry = entry.strip()
+            if not entry:
+                continue
+            parts = entry.split(":")
+            try:
+                cid = int(parts[0].strip())
+                city_id = parts[1].strip() if len(parts) > 1 and parts[1].strip() in CITY_BY_ID else "oujda"
+                if cid not in existing_ids:
+                    users.append({
+                        "chat_id": cid,
+                        "city_id": city_id,
+                        "alerts_enabled": 1,
+                        "pre_alert_mins": 10,
+                        "adhkar_alerts": 1,
+                        "kahf_alert": 1,
+                        "fajr_alert": 1,
+                        "dhuhr_alert": 1,
+                        "asr_alert": 1,
+                        "maghrib_alert": 1,
+                        "isha_alert": 1,
+                    })
+                    existing_ids.add(cid)
+            except Exception:
+                pass
+
+    sent_count = 0
+    for u in users:
+        chat_id = u["chat_id"]
+        city_id = u.get("city_id", "oujda")
+        city = CITY_BY_ID.get(city_id, CITY_BY_ID["oujda"])
+        day_data = get_today_times(city_id)
+        if not day_data:
+            continue
+        timings = day_data.get("timings", {})
+
+        for p_key in ALERT_PRAYERS:
+            if not u.get(f"{p_key.lower()}_alert", 1):
+                continue
+            p_time = timings.get(p_key, "")
+            if ":" not in p_time:
+                continue
+
+            if p_time == now_hm and mark_alert_sent(chat_id, f"{today_str}_{p_key}_exact"):
+                msg = (
+                    f"🕌 <b>حان الآن موعد أذان {PRAYER_NAMES_AR[p_key]}</b>\n"
+                    f"📍 بتوقيت مدينة <b>{city['ar']}</b> ({p_time})\n"
+                    f"🤲 <i>اللهم رب هذه الدعوة التامة والصلاة القائمة آت محمداً الوسيلة والفضيلة...</i>"
+                )
+                try:
+                    bot.send_message(chat_id, msg)
+                    sent_count += 1
+                except Exception:
+                    pass
+
+            pre_mins = u.get("pre_alert_mins", 10)
+            if pre_mins > 0:
+                hh, mm = map(int, p_time.split(":"))
+                pre_dt = now.replace(hour=hh, minute=mm, second=0, microsecond=0) - timedelta(minutes=pre_mins)
+                if pre_dt.strftime("%H:%M") == now_hm and mark_alert_sent(chat_id, f"{today_str}_{p_key}_pre{pre_mins}"):
+                    msg = (
+                        f"⏳ <b>تذكير قبل الصلاة</b>\n"
+                        f"تبقى <b>{pre_mins} دقائق</b> على أذان <b>{PRAYER_NAMES_AR[p_key]}</b> "
+                        f"في مدينة {city['ar']} ({p_time})."
+                    )
+                    try:
+                        bot.send_message(chat_id, msg)
+                        sent_count += 1
+                    except Exception:
+                        pass
+
+        if u.get("adhkar_alerts", 1):
+            if now_hm == "07:30" and mark_alert_sent(chat_id, f"{today_str}_morning_adhkar"):
+                try:
+                    bot.send_message(chat_id, "🌅 <b>تذكير:</b> لا تنسَ قراءة أذكار الصباح لحفظ يومك وبركته.")
+                    sent_count += 1
+                except Exception:
+                    pass
+            if now_hm == "17:30" and mark_alert_sent(chat_id, f"{today_str}_evening_adhkar"):
+                try:
+                    bot.send_message(chat_id, "🌙 <b>تذكير:</b> حان وقت أذكار المساء، ألا بذكر الله تطمئن القلوب.")
+                    sent_count += 1
+                except Exception:
+                    pass
+
+        if u.get("kahf_alert", 1) and now.weekday() == 4 and now_hm == "10:00":
+            if mark_alert_sent(chat_id, f"{today_str}_kahf"):
+                try:
+                    bot.send_message(
+                        chat_id,
+                        "🕌 <b>جمعة مباركة!</b>\nلا تنسَ قراءة <b>سورة الكهف</b> (برواية ورش عن نافع) والإكثار من الصلاة على النبي ﷺ.",
+                    )
+                    sent_count += 1
+                except Exception:
+                    pass
+
+    return {"ok": True, "time": now_hm, "users_checked": len(users), "sent": sent_count}
+
+
+@app.route("/webhook", methods=["POST"])
+def telegram_webhook():
+    if not bot:
+        return jsonify({"ok": False, "error": "BOT_TOKEN missing"}), 500
+    try:
+        raw = request.get_data().decode("utf-8")
+        update = types.Update.de_json(raw)
+        bot.process_new_updates([update])
+        return "OK", 200
+    except Exception as e:
+        logger.error("Webhook error: %s", e)
+        return "OK", 200
+
+
+@app.route("/setup-webhook", methods=["GET"])
+def setup_webhook():
+    if not bot:
+        return jsonify({"ok": False, "error": "Please add BOT_TOKEN in Vercel Environment Variables first!"}), 400
+    base_url = WEBAPP_URL or request.url_root.rstrip("/")
+    if base_url.startswith("http://"):
+        base_url = base_url.replace("http://", "https://", 1)
+    hook_url = f"{base_url}/webhook"
+    try:
+        bot.remove_webhook()
+        ok = bot.set_webhook(url=hook_url)
+        return jsonify({
+            "ok": ok,
+            "webhook_url": hook_url,
+            "message": "تم ربط بوت تيليجرام بخادم Vercel بنجاح! أرسل /start في تيليجرام الآن."
+        }), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/cron/alarms", methods=["GET"])
+def api_cron_alarms():
+    return jsonify(_run_alarm_check_once()), 200
 
 
 @app.route("/health")
