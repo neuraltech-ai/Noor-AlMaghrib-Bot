@@ -9,8 +9,32 @@
   <meta name="apple-mobile-web-app-title" content="نور المغرب" />
   <link rel="manifest" href="/manifest.json" />
   <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-  <link rel="apple-touch-icon" href="/icon.svg" />
-  <title>نور المغرب — المواقيت ومصحف ورش</title>
+  <link rel="apple-touch-icon" href="/icon-512.png" />
+  <title>نور المغرب — مواقيت الصلاة في المغرب، الحصة الشهرية، ومصحف ورش</title>
+  <meta name="description" content="مواقيت الصلاة الرسمية في كل المدن المغربية (وزارة الأوقاف والشؤون الإسلامية)، الحصة الشهرية PDF، المصحف المحمدي برواية ورش عن نافع، بوصلة القبلة الحية، الأذكار، والسيرة النبوية." />
+  <meta name="keywords" content="مواقيت الصلاة المغرب, أوقات الصلاة في المغرب, الحصة الشهرية لمواقيت الصلاة, مواقيت الصلاة وجدة الرباط الدار البيضاء فاس مراكش طنجة أكادير, المصحف برواية ورش عن نافع, بوصلة القبلة, أذكار الصباح والمساء, نور المغرب" />
+  <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="{{ site_url }}/" />
+  {% if google_verification %}<meta name="google-site-verification" content="{{ google_verification }}" />{% endif %}
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="ar_MA" />
+  <meta property="og:title" content="نور المغرب — مواقيت الصلاة الرسمية بالمغرب ومصحف ورش" />
+  <meta property="og:description" content="أوقات الصلاة في جميع المدن المغربية، الحصة الشهرية PDF، المصحف التفاعلي برواية ورش عن نافع، بوصلة القبلة، والأذكار اليومية." />
+  <meta property="og:url" content="{{ site_url }}/" />
+  <meta property="og:image" content="{{ site_url }}/icon-512.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "نور المغرب الإسلامي",
+    "url": "{{ site_url }}/",
+    "inLanguage": "ar-MA",
+    "applicationCategory": "LifestyleApplication",
+    "operatingSystem": "All",
+    "description": "تطبيق وموقع مواقيت الصلاة الرسمية بالمغرب والمصحف التفاعلي برواية ورش عن نافع وبوصلة القبلة والأذكار والسيرة النبوية."
+  }
+  </script>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -638,7 +662,7 @@
     if (rawChatId) localStorage.setItem('noor_chat_id', String(rawChatId));
     const chatId = rawChatId || localStorage.getItem('noor_chat_id') || '';
 
-    let currentCity = localStorage.getItem('noor_city') || 'oujda';
+    let currentCity = urlParams.get('city') || localStorage.getItem('noor_city') || 'oujda';
     let currentCityObj = { id: 'oujda', ar: 'وجدة', en: 'Oujda', region: 'الشرق' };
     let allCities = [];
     let contentData = {};

@@ -1409,7 +1409,14 @@ def bot_polling_loop():
 # ---------------------------------------------------------------------------
 @app.route("/")
 def index():
-    return render_template("index.html", bot_share_url=get_bot_share_url())
+    base_url = WEBAPP_URL or request.url_root.rstrip("/")
+    g_verify = os.environ.get("GOOGLE_SITE_VERIFICATION", "").strip()
+    return render_template(
+        "index.html",
+        bot_share_url=get_bot_share_url(),
+        site_url=base_url,
+        google_verification=g_verify,
+    )
 
 
 
@@ -1701,20 +1708,127 @@ def app_icon_svg():
     return Response(svg, mimetype="image/svg+xml")
 
 
+
+
+def _render_png_icon(size: int) -> bytes:
+    """Generate a crisp Emerald & Gold Moroccan Minaret PNG icon (192x192 / 512x512) for Play Store & PWABuilder."""
+    from PIL import Image, ImageDraw
+    img = Image.new("RGBA", (size, size), (4, 36, 28, 255))
+    d = ImageDraw.Draw(img)
+    s = size / 512.0
+    # Outer golden ring
+    d.ellipse([int(36*s), int(36*s), int(476*s), int(476*s)], fill=(8, 51, 40, 255), outline=(212, 175, 55, 255), width=max(4, int(12*s)))
+    # Crescent moon glow
+    d.ellipse([int(145*s), int(165*s), int(345*s), int(365*s)], fill=(243, 220, 138, 255))
+    d.ellipse([int(175*s), int(150*s), int(365*s), int(340*s)], fill=(8, 51, 40, 255))
+    # Moroccan square minaret silhouette in metallic gold
+    d.rectangle([int(222*s), int(145*s), int(290*s), int(365*s)], fill=(212, 175, 55, 255))
+    d.rectangle([int(236*s), int(112*s), int(276*s), int(145*s)], fill=(243, 220, 138, 255))
+    d.ellipse([int(248*s), int(90*s), int(264*s), int(106*s)], fill=(243, 220, 138, 255))
+    # Base plinth
+    d.rounded_rectangle([int(156*s), int(360*s), int(356*s), int(388*s)], radius=int(8*s), fill=(212, 175, 55, 255))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+@app.route("/icon-192.png")
+def icon_192():
+    return Response(_render_png_icon(192), mimetype="image/png")
+
+
+@app.route("/icon-512.png")
+def icon_512():
+    return Response(_render_png_icon(512), mimetype="image/png")
+
+
+@app.route("/robots.txt")
+def robots_txt():
+    base_url = WEBAPP_URL or request.url_root.rstrip("/")
+    txt = f"User-agent: *\nAllow: /\n\nSitemap: {base_url}/sitemap.xml\n"
+    return Response(txt, mimetype="text/plain; charset=utf-8")
+
+
+@app.route("/sitemap.xml")
+def sitemap_xml():
+    base_url = WEBAPP_URL or request.url_root.rstrip("/")
+    today_iso = datetime.now(MOROCCO_TZ).strftime("%Y-%m-%d")
+    urls = [
+        f"  <url><loc>{base_url}/</loc><lastmod>{today_iso}</lastmod><changefreq>daily</changefreq><priority>1.0</priority></url>",
+        f"  <url><loc>{base_url}/privacy</loc><lastmod>{today_iso}</lastmod><changefreq>monthly</changefreq><priority>0.5</priority></url>",
+    ]
+    for c in MOROCCO_CITIES:
+        urls.append(
+            f"  <url><loc>{base_url}/?city={c['id']}</loc><lastmod>{today_iso}</lastmod><changefreq>daily</changefreq><priority>0.8</priority></url>"
+        )
+    xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + "\n".join(urls) + "\n</urlset>"
+    return Response(xml, mimetype="application/xml; charset=utf-8")
+
+
+@app.route("/.well-known/assetlinks.json")
+def assetlinks_json():
+    raw = os.environ.get("ANDROID_ASSETLINKS_JSON", "[]").strip()
+    return Response(raw, mimetype="application/json")
+
+
+@app.route("/privacy")
+def privacy_policy():
+    html = """<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>سياسة الخصوصية — تطبيق نور المغرب الإسلامي</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Cairo', sans-serif; background: #031914; color: #f4f7f5; max-width: 780px; margin: 0 auto; padding: 24px 16px; line-height: 1.9; }
+    .card { background: #083328; border: 1px solid rgba(212,175,55,0.3); border-radius: 16px; padding: 24px; }
+    h1, h2 { color: #f3dc8a; }
+    a { color: #d4af37; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🕌 سياسة الخصوصية — تطبيق نور المغرب الإسلامي</h1>
+    <p><b>آخر تحديث:</b> 2026</p>
+    <h2>1. البيانات التي نستخدمها</h2>
+    <p>يحترم تطبيق <b>نور المغرب الإسلامي</b> خصوصيتك بالكامل ولا يجمع أي بيانات شخصية حساسة ولا يبيع أو يشارك أي بيانات مع أي طرف ثالث.</p>
+    <ul>
+      <li><b>الموقع الجغرافي (GPS):</b> يُستخدم اختيارياً وبإذنك المباشر داخل هاتفك فقط لحساب اتجاه القبلة الدقيق ومواقيت الصلاة، ولا يتم تخزين إحداثياتك على أي خادم خارجي.</li>
+      <li><b>معرّف محادثة تيليجرام (Chat ID):</b> عند استخدامك لبوت تيليجرام، نحتفظ فقط بمعرف المحادثة واختيار المدينة وإعدادات التنبيهات لإرسال منبه الأذان والأذكار بناءً على رغبتك.</li>
+      <li><b>تفضيلات القراءة (المصحف والمسبحة):</b> تُحفظ محلياً في ذاكرة جهازك فقط (LocalStorage).</li>
+    </ul>
+    <h2>2. الأذونات</h2>
+    <p>لا يطلب التطبيق سوى إذن الموقع (اختياري للبوصلة) وإذن مستشعر الاتجاه للبوصلة الحية.</p>
+    <h2>3. التواصل وحذف البيانات</h2>
+    <p>يمكنك إيقاف التنبيهات في أي وقت من داخل البوت أو التطبيق، وللاستفسار يرجى التواصل عبر بوت تيليجرام الرسمي.</p>
+    <p><a href="/">← العودة إلى تطبيق نور المغرب</a></p>
+  </div>
+</body>
+</html>"""
+    return Response(html, mimetype="text/html; charset=utf-8")
+
+
 @app.route("/manifest.json")
 def pwa_manifest():
     manifest = {
-        "name": "نور المغرب — المواقيت ومصحف ورش",
+        "id": "/",
+        "name": "نور المغرب — مواقيت الصلاة بالمغرب ومصحف ورش",
         "short_name": "نور المغرب",
-        "description": "مواقيت الصلاة الرسمية بالمغرب، الحصة الشهرية PDF، المصحف برواية ورش، الأذان، والأذكار",
+        "description": "مواقيت الصلاة الرسمية في كل المدن المغربية، الحصة الشهرية PDF، المصحف المحمدي برواية ورش عن نافع، بوصلة القبلة، الأذكار، والسيرة النبوية.",
         "start_url": "/",
+        "scope": "/",
         "display": "standalone",
+        "orientation": "portrait",
         "background_color": "#031914",
         "theme_color": "#04241c",
         "lang": "ar",
         "dir": "rtl",
+        "categories": ["lifestyle", "books", "education"],
         "icons": [
-            {"src": "/icon.svg", "sizes": "192x192 512x512", "type": "image/svg+xml", "purpose": "any maskable"}
+            {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+            {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+            {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
         ],
     }
     return jsonify(manifest)
@@ -1722,7 +1836,7 @@ def pwa_manifest():
 
 @app.route("/sw.js")
 def pwa_sw():
-    sw_js = """const CACHE_NAME = 'noor-maghrib-v8';
+    sw_js = """const CACHE_NAME = 'noor-maghrib-v9';
 const ASSETS = ['/', '/manifest.json', '/icon.svg', '/api/cities', '/api/content'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
