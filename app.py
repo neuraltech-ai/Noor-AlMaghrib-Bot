@@ -42,9 +42,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("noor_bot")
 
+IS_VERCEL = bool(os.environ.get("VERCEL"))
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "").strip().rstrip("/")
-DB_PATH = os.environ.get("DB_PATH", "bot_data.db")
+DB_PATH = os.environ.get("DB_PATH", "/tmp/bot_data.db" if IS_VERCEL else "bot_data.db")
 MOROCCO_TZ = ZoneInfo("Africa/Casablanca")
 
 app = Flask(__name__)
@@ -1460,7 +1461,7 @@ def pwa_manifest():
 
 @app.route("/sw.js")
 def pwa_sw():
-    sw_js = """const CACHE_NAME = 'noor-maghrib-v6';
+    sw_js = """const CACHE_NAME = 'noor-maghrib-v7';
 const ASSETS = ['/', '/manifest.json', '/icon.svg', '/api/cities', '/api/content'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
@@ -1492,8 +1493,9 @@ def api_user_settings():
 
 
 init_db()
-threading.Thread(target=scheduler_loop, daemon=True).start()
-threading.Thread(target=bot_polling_loop, daemon=True).start()
+if not IS_VERCEL:
+    threading.Thread(target=scheduler_loop, daemon=True).start()
+    threading.Thread(target=bot_polling_loop, daemon=True).start()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))

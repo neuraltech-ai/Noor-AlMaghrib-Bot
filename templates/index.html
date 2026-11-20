@@ -160,12 +160,109 @@
       </div>
     </section>
 
-    <!-- TAB 2: MUSHAF WARSH & WARSH RADIOS -->
+    <!-- TAB 2: INTERACTIVE MUSHAF AL-MUHAMMADI (WARSH 604 PAGES) & WARSH RADIOS -->
     <section id="tab-quran" class="hidden space-y-4">
-      <div class="glass-card rounded-2xl p-4 space-y-3">
+
+      <!-- Mode Switcher: Visual Page-Flipping Mushaf vs Surah Text & Audio -->
+      <div class="grid grid-cols-2 gap-2">
+        <button id="mushafModePagesBtn" onclick="switchMushafView('pages')" class="py-2.5 px-3 rounded-xl text-xs font-extrabold gold-gradient text-emerald-950 shadow">
+          📖 المصحف (قلب الصفحات)
+        </button>
+        <button id="mushafModeSurahBtn" onclick="switchMushafView('surah')" class="py-2.5 px-3 rounded-xl text-xs font-extrabold glass-card text-amber-200 border border-amber-400/30">
+          🎧 السور نصاً وصوتاً (ورش)
+        </button>
+      </div>
+
+      <!-- INTERACTIVE PAGE-FLIPPING MUSHAF VIEW -->
+      <div id="mushafPagesSection" class="glass-card rounded-2xl p-3.5 space-y-3 border border-amber-400/30">
+        <!-- Live Wird & Ahzab Progress Header -->
+        <div class="bg-emerald-950/80 rounded-xl p-3 border border-amber-400/25 space-y-2">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div class="text-xs font-extrabold text-amber-300">📖 المصحف الشريف برواية ورش عن نافع</div>
+              <div id="mushafPageMeta" class="text-[11px] text-emerald-200/85 mt-0.5">صفحة 1 من 604 — الحزب 1</div>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button onclick="toggleMushafNightMode()" id="mushafThemeBtn" class="px-2.5 py-1 rounded-lg bg-emerald-900 text-amber-200 text-[11px] font-bold border border-amber-400/30">
+                🌙 ليلي
+              </button>
+              <button onclick="addBookmarkForCurrentPage()" class="px-2.5 py-1 rounded-lg gold-gradient text-emerald-950 text-[11px] font-extrabold shadow">
+                🔖 وضع علامة
+              </button>
+            </div>
+          </div>
+
+          <!-- Auto-calculated Read Ahzab & Pages Progress -->
+          <div class="grid grid-cols-3 gap-1.5 text-center text-[10px]">
+            <div class="bg-emerald-900/60 rounded-lg py-1.5 px-1 border border-amber-400/20">
+              <div class="text-emerald-200/75">الصفحات المقروءة</div>
+              <div id="statPagesRead" class="font-extrabold text-white text-xs mt-0.5">0 / 604</div>
+            </div>
+            <div class="bg-emerald-900/60 rounded-lg py-1.5 px-1 border border-amber-400/20">
+              <div class="text-emerald-200/75">الأحزاب المقروءة</div>
+              <div id="statAhzabRead" class="font-extrabold text-amber-300 text-xs mt-0.5">0.0 / 60</div>
+            </div>
+            <div class="bg-emerald-900/60 rounded-lg py-1.5 px-1 border border-amber-400/20">
+              <div class="text-emerald-200/75">نسبة الختمة</div>
+              <div id="statKhatmaPct" class="font-extrabold text-emerald-300 text-xs mt-0.5">0%</div>
+            </div>
+          </div>
+          <div class="w-full bg-emerald-950 rounded-full h-2 overflow-hidden border border-amber-400/20">
+            <div id="mushafKhatmaBar" class="gold-gradient h-2 transition-all duration-300" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <!-- Quick Jump Controls (Page Number + Hizb Picker) -->
+        <div class="flex items-center justify-between gap-2 text-xs">
+          <div class="flex items-center gap-1.5 flex-1">
+            <span class="text-emerald-200/80 whitespace-nowrap">صفحة:</span>
+            <input id="jumpPageInput" type="number" min="1" max="604" value="1"
+              onchange="goToMushafPage(this.value)"
+              class="w-16 bg-emerald-950 border border-amber-400/35 rounded-lg px-2 py-1 text-center text-amber-200 font-mono font-bold" />
+          </div>
+          <select id="jumpHizbSelect" onchange="jumpToHizbPage(this.value)"
+            class="flex-1 bg-emerald-950 border border-amber-400/35 rounded-lg px-2 py-1 text-xs text-amber-200 font-bold"></select>
+        </div>
+
+        <!-- Swipeable Mushaf Page Frame (Book Flip Container) -->
+        <div id="mushafBookFrame" class="relative rounded-2xl overflow-hidden border-2 border-amber-500/40 bg-[#fdf8ec] shadow-2xl min-h-[430px] flex items-center justify-center touch-pan-y select-none">
+          <div id="mushafPageSpinner" class="absolute inset-0 flex items-center justify-center bg-[#fdf8ec]/85 text-emerald-950 font-bold text-xs z-10 hidden">
+            ⏳ جاري تحميل الصفحة...
+          </div>
+          <img id="mushafPageImg" src="" alt="صفحة المصحف برواية ورش" class="w-full h-auto object-contain transition-opacity duration-200" />
+        </div>
+
+        <!-- Page Flip Navigation Bar & Mark Page Read -->
+        <div class="grid grid-cols-3 gap-2">
+          <button onclick="flipMushafPage(-1)" class="py-2.5 rounded-xl bg-emerald-900/90 hover:bg-emerald-800 text-amber-200 font-bold text-xs border border-amber-400/30">
+            ➡️ الصفحة السابقة
+          </button>
+          <button onclick="toggleCurrentPageRead()" id="markPageReadBtn" class="py-2.5 rounded-xl bg-emerald-800 text-white font-bold text-xs border border-amber-400/30">
+            ✅ حفظ كمقروءة
+          </button>
+          <button onclick="flipMushafPage(1)" class="py-2.5 rounded-xl gold-gradient text-emerald-950 font-extrabold text-xs shadow">
+            الصفحة التالية ⬅️
+          </button>
+        </div>
+        <p class="text-[10px] text-center text-emerald-200/70">
+          💡 يمكنك قلب الصفحات بالسحب يميناً ويساراً على الصفحة؛ ويتم حفظ آخر صفحة وصلت إليها وحساب الأحزاب المقروءة تلقائياً.
+        </p>
+
+        <!-- Saved Bookmarks List -->
+        <div class="bg-emerald-950/75 rounded-xl p-3 border border-amber-400/20 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-amber-300">🔖 العلامات المرجعية المحفوظة</span>
+            <button onclick="resetMushafProgress()" class="text-[10px] text-rose-300 hover:underline">تصفير سجل القراءة</button>
+          </div>
+          <div id="mushafBookmarksList" class="space-y-1.5 text-xs"></div>
+        </div>
+      </div>
+
+      <!-- SURAH TEXT & OMAR AL-KAZABRI AUDIO VIEW -->
+      <div id="mushafSurahSection" class="hidden glass-card rounded-2xl p-4 space-y-3">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h3 class="text-sm font-bold text-amber-300">📖 المصحف المحمدي — رواية ورش عن نافع</h3>
+            <h3 class="text-sm font-bold text-amber-300">📖 تلاوة ونص السور — رواية ورش عن نافع</h3>
             <p class="text-[11px] text-emerald-200/75">النص الكامل برسم ورش مع تلاوة الشيخ عمر القزابري</p>
           </div>
           <select id="surahSelect" onchange="loadWarshSurah(this.value)" class="bg-emerald-950 border border-amber-400/40 rounded-xl px-3 py-1.5 text-xs text-amber-200 font-bold"></select>
@@ -183,6 +280,7 @@
         </div>
       </div>
 
+      <!-- 24/7 Warsh Quran Radios -->
       <div class="glass-card rounded-2xl p-4 space-y-2.5">
         <h3 class="text-sm font-bold text-amber-300">📻 إذاعات القرآن الكريم برواية ورش (24/7)</h3>
         <div id="radioList" class="space-y-2"></div>
@@ -603,6 +701,7 @@
       renderAsma();
       renderSeerahAndProphets();
       renderInteractiveKhatma();
+      initInteractiveMushaf();
       loadWarshSurah(1);
 
       if (contentData.inspirations?.length) {
@@ -796,10 +895,9 @@
     }
 
     function openSelectedHizbInMushaf() {
-      const hmap = contentData.hizb_map || {};
-      const info = hmap[String(selectedHizb)] || { surah: 1 };
       switchTab('quran');
-      loadWarshSurah(info.surah);
+      switchMushafView('pages');
+      jumpToHizbPage(selectedHizb);
     }
 
     function resetKhatmaAll() {
@@ -1249,6 +1347,241 @@
       } catch (err) {
         banner.innerText = '⚠️ جهازك أو متصفحك لا يدعم مستشعر البوصلة؛ اعتمد على الزاوية المحسوبة بدقة أعلاه.';
       }
+    }
+
+
+    // =========================================================================
+    // Interactive Mushaf Al-Muhammadi (Warsh 604 Pages) Engine
+    // =========================================================================
+    let currentMushafPage = parseInt(localStorage.getItem('noor_mushaf_last_page') || '1', 10);
+    let readPagesSet = new Set(JSON.parse(localStorage.getItem('noor_read_pages') || '[]'));
+    let mushafBookmarks = JSON.parse(localStorage.getItem('noor_mushaf_bookmarks') || '[]');
+    let mushafNightMode = localStorage.getItem('noor_mushaf_night') === '1';
+
+    function hizbForPage(p) {
+      return Math.min(60, Math.max(1, Math.floor(((p - 1) * 60) / 604) + 1));
+    }
+    function startPageForHizb(h) {
+      return Math.min(604, Math.max(1, Math.floor(((h - 1) * 604) / 60) + 1));
+    }
+
+    function initInteractiveMushaf() {
+      const hSelect = document.getElementById('jumpHizbSelect');
+      if (hSelect) {
+        let opts = '';
+        for (let h = 1; h <= 60; h++) {
+          opts += `<option value="${h}">الحزب ${h} (ص ${startPageForHizb(h)})</option>`;
+        }
+        hSelect.innerHTML = opts;
+      }
+
+      // Touch swipe support for realistic book page flipping (RTL: swipe left -> next page, swipe right -> prev page)
+      const frame = document.getElementById('mushafBookFrame');
+      let touchStartX = 0;
+      if (frame) {
+        frame.addEventListener('touchstart', (e) => {
+          touchStartX = e.changedTouches[0].screenX;
+        }, { passive: true });
+        frame.addEventListener('touchend', (e) => {
+          const dx = e.changedTouches[0].screenX - touchStartX;
+          if (Math.abs(dx) > 45) {
+            if (dx > 0) flipMushafPage(1);   // Swipe right-to-left or left-to-right natural Arabic book turn
+            else flipMushafPage(-1);
+          }
+        }, { passive: true });
+      }
+
+      applyMushafTheme();
+      goToMushafPage(currentMushafPage, false);
+      renderBookmarksList();
+      updateMushafStatsUI();
+    }
+
+    function switchMushafView(mode) {
+      const isPages = mode === 'pages';
+      document.getElementById('mushafPagesSection').classList.toggle('hidden', !isPages);
+      document.getElementById('mushafSurahSection').classList.toggle('hidden', isPages);
+      document.getElementById('mushafModePagesBtn').className = isPages
+        ? 'py-2.5 px-3 rounded-xl text-xs font-extrabold gold-gradient text-emerald-950 shadow'
+        : 'py-2.5 px-3 rounded-xl text-xs font-extrabold glass-card text-amber-200 border border-amber-400/30';
+      document.getElementById('mushafModeSurahBtn').className = !isPages
+        ? 'py-2.5 px-3 rounded-xl text-xs font-extrabold gold-gradient text-emerald-950 shadow'
+        : 'py-2.5 px-3 rounded-xl text-xs font-extrabold glass-card text-amber-200 border border-amber-400/30';
+    }
+
+    function goToMushafPage(pageNum, markAsRead = true) {
+      let p = parseInt(pageNum, 10);
+      if (isNaN(p)) p = 1;
+      p = Math.max(1, Math.min(604, p));
+      currentMushafPage = p;
+      localStorage.setItem('noor_mushaf_last_page', String(p));
+
+      if (markAsRead) {
+        readPagesSet.add(p);
+        persistReadPages();
+      }
+
+      const hizb = hizbForPage(p);
+      document.getElementById('jumpPageInput').value = p;
+      const hSel = document.getElementById('jumpHizbSelect');
+      if (hSel) hSel.value = hizb;
+      document.getElementById('mushafPageMeta').innerText = `صفحة ${p} من 604 — الحزب ${hizb}`;
+
+      const padded = String(p).padStart(3, '0');
+      const imgEl = document.getElementById('mushafPageImg');
+      const spinner = document.getElementById('mushafPageSpinner');
+      spinner.classList.remove('hidden');
+      imgEl.style.opacity = '0.35';
+      imgEl.onload = () => {
+        spinner.classList.add('hidden');
+        imgEl.style.opacity = '1';
+      };
+      imgEl.onerror = () => {
+        spinner.classList.add('hidden');
+        imgEl.style.opacity = '1';
+      };
+      imgEl.src = `https://android.quran.com/data/warsh/width_1024/page${padded}.png`;
+
+      updateMarkReadBtnState();
+      updateMushafStatsUI();
+    }
+
+    function flipMushafPage(delta) {
+      // Automatically mark current page read when advancing forward
+      if (delta > 0) {
+        readPagesSet.add(currentMushafPage);
+        persistReadPages();
+      }
+      goToMushafPage(currentMushafPage + delta, true);
+      if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+    }
+
+    function jumpToHizbPage(h) {
+      goToMushafPage(startPageForHizb(parseInt(h, 10)), false);
+    }
+
+    function toggleCurrentPageRead() {
+      if (readPagesSet.has(currentMushafPage)) {
+        readPagesSet.delete(currentMushafPage);
+      } else {
+        readPagesSet.add(currentMushafPage);
+      }
+      persistReadPages();
+      updateMarkReadBtnState();
+      updateMushafStatsUI();
+    }
+
+    function updateMarkReadBtnState() {
+      const btn = document.getElementById('markPageReadBtn');
+      if (!btn) return;
+      if (readPagesSet.has(currentMushafPage)) {
+        btn.innerText = '✅ صفحة مقروءة';
+        btn.className = 'py-2.5 rounded-xl bg-emerald-600 text-white font-extrabold text-xs border border-emerald-300';
+      } else {
+        btn.innerText = '☑️ تحديد كمقروءة';
+        btn.className = 'py-2.5 rounded-xl bg-emerald-900/80 text-emerald-100 font-bold text-xs border border-amber-400/30';
+      }
+    }
+
+    function persistReadPages() {
+      const arr = Array.from(readPagesSet);
+      localStorage.setItem('noor_read_pages', JSON.stringify(arr));
+      // Also sync completed Ahzab (an Hizb is marked complete when >= 8 of its ~10 pages are read)
+      const autoAhzab = new Set(completedAhzab);
+      for (let h = 1; h <= 60; h++) {
+        const sp = startPageForHizb(h);
+        const ep = (h < 60) ? startPageForHizb(h + 1) - 1 : 604;
+        let count = 0;
+        const total = Math.max(1, ep - sp + 1);
+        for (let pg = sp; pg <= ep; pg++) {
+          if (readPagesSet.has(pg)) count++;
+        }
+        if (count >= Math.ceil(total * 0.8)) autoAhzab.add(h);
+      }
+      completedAhzab = Array.from(autoAhzab);
+      localStorage.setItem('noor_completed_ahzab', JSON.stringify(completedAhzab));
+      if (typeof renderInteractiveKhatma === 'function') renderInteractiveKhatma();
+    }
+
+    function updateMushafStatsUI() {
+      const pagesCount = readPagesSet.size;
+      const ahzabFloat = ((pagesCount / 604) * 60).toFixed(1);
+      const pct = Math.min(100, Math.round((pagesCount / 604) * 100));
+      const elP = document.getElementById('statPagesRead');
+      const elA = document.getElementById('statAhzabRead');
+      const elPct = document.getElementById('statKhatmaPct');
+      const elBar = document.getElementById('mushafKhatmaBar');
+      if (elP) elP.innerText = `${pagesCount} / 604`;
+      if (elA) elA.innerText = `${ahzabFloat} / 60`;
+      if (elPct) elPct.innerText = `${pct}%`;
+      if (elBar) elBar.style.width = `${pct}%`;
+    }
+
+    function addBookmarkForCurrentPage() {
+      const hizb = hizbForPage(currentMushafPage);
+      const existing = mushafBookmarks.find(b => b.page === currentMushafPage);
+      if (!existing) {
+        mushafBookmarks.unshift({
+          page: currentMushafPage,
+          hizb: hizb,
+          date: new Date().toLocaleDateString('ar-MA')
+        });
+        localStorage.setItem('noor_mushaf_bookmarks', JSON.stringify(mushafBookmarks));
+        renderBookmarksList();
+        if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+      }
+    }
+
+    function removeBookmark(pageNum) {
+      mushafBookmarks = mushafBookmarks.filter(b => b.page !== pageNum);
+      localStorage.setItem('noor_mushaf_bookmarks', JSON.stringify(mushafBookmarks));
+      renderBookmarksList();
+    }
+
+    function renderBookmarksList() {
+      const box = document.getElementById('mushafBookmarksList');
+      if (!box) return;
+      if (!mushafBookmarks.length) {
+        box.innerHTML = '<div class="text-emerald-200/60 text-[11px] text-center py-1">لا توجد علامات محفوظة بعد — اضغط «🔖 وضع علامة» لحفظ صفحتك.</div>';
+        return;
+      }
+      box.innerHTML = mushafBookmarks.map(b => `
+        <div class="flex items-center justify-between bg-emerald-900/60 rounded-lg px-2.5 py-1.5 border border-amber-400/20">
+          <button onclick="goToMushafPage(${b.page}, false)" class="text-right flex-1 text-amber-100 font-semibold">
+            🔖 صفحة <b>${b.page}</b> — الحزب ${b.hizb} <span class="text-[10px] text-emerald-300/75">(${b.date})</span>
+          </button>
+          <button onclick="removeBookmark(${b.page})" class="text-rose-300 px-1.5 text-xs">✕</button>
+        </div>
+      `).join('');
+    }
+
+    function toggleMushafNightMode() {
+      mushafNightMode = !mushafNightMode;
+      localStorage.setItem('noor_mushaf_night', mushafNightMode ? '1' : '0');
+      applyMushafTheme();
+    }
+
+    function applyMushafTheme() {
+      const img = document.getElementById('mushafPageImg');
+      const frame = document.getElementById('mushafBookFrame');
+      const btn = document.getElementById('mushafThemeBtn');
+      if (!img || !frame) return;
+      if (mushafNightMode) {
+        img.style.filter = 'invert(0.92) hue-rotate(180deg) contrast(1.05)';
+        frame.style.background = '#0b1915';
+        if (btn) btn.innerText = '☀️ نهاري';
+      } else {
+        img.style.filter = 'none';
+        frame.style.background = '#fdf8ec';
+        if (btn) btn.innerText = '🌙 ليلي';
+      }
+    }
+
+    function resetMushafProgress() {
+      readPagesSet.clear();
+      localStorage.setItem('noor_read_pages', '[]');
+      updateMarkReadBtnState();
+      updateMushafStatsUI();
     }
 
     function switchTab(tab) {
