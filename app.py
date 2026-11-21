@@ -9,6 +9,7 @@ Full Quran Text & Audio in Riwayat Warsh A'n Nafi' (رواية ورش عن نا�
 import io
 import os
 import json
+import hashlib
 import time
 import random
 import sqlite3
@@ -291,6 +292,124 @@ def mark_alert_sent(chat_id: int, alert_key: str) -> bool:
             return False
         finally:
             conn.close()
+
+
+
+
+# ---------------------------------------------------------------------------
+# Web Push Notifications (Direct Phone System Notifications via VAPID)
+# ---------------------------------------------------------------------------
+VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "").strip()
+VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "").strip()
+VAPID_CLAIMS = {"sub": os.environ.get("VAPID_SUBJECT", "mailto:noor.almaghrib@vercel.app")}
+
+
+def _sub_id(endpoint: str) -> str:
+    return hashlib.sha256(endpoint.encode("utf-8")).hexdigest()[:20]
+
+
+def save_webpush_sub(payload: dict) -> str:
+    sub = payload.get("subscription") or {}
+    endpoint = sub.get("endpoint", "")
+    if not endpoint:
+        return ""
+    sid = _sub_id(endpoint)
+    record = {
+        "id": sid,
+        "subscription": sub,
+        "city_id": payload.get("city_id") if payload.get("city_id") in CITY_BY_ID else "oujda",
+        "alerts_enabled": int(payload.get("alerts_enabled", 1)),
+        "pre_alert_mins": int(payload.get("pre_alert_mins", 10)),
+        "adhkar_alerts": int(payload.get("adhkar_alerts", 1)),
+        "kahf_alert": int(payload.get("kahf_alert", 1)),
+        "updated_at": datetime.now(MOROCCO_TZ).isoformat(),
+    }
+    if USE_REDIS:
+        _redis_cmd("HSET", "noor:webpush_subs", sid, json.dumps(record, ensure_ascii=False))
+    else:
+        with DB_LOCK:
+            conn = sqlite3.connect(DB_PATH)
+            conn.execute("CREATE TABLE IF NOT EXISTS webpush_subs (id TEXT PRIMARY KEY, data TEXT)")
+            conn.execute("INSERT OR REPLACE INTO webpush_subs (id, data) VALUES (?, ?)", (sid, json.dumps(record, ensure_ascii=False)))
+            conn.commit()
+            conn.close()
+    return sid
+
+
+def delete_webpush_sub(sid: str):
+    if not sid:
+        return
+    if USE_REDIS:
+        _redis_cmd("HDEL", "noor:webpush_subs", sid)
+    else:
+        with DB_LOCK:
+            conn = sqlite3.connect(DB_PATH)
+            conn.execute("CREATE TABLE IF NOT EXISTS webpush_subs (id TEXT PRIMARY KEY, data TEXT)")
+            conn.execute("DELETE FROM webpush_subs WHERE id = ?", (sid,))
+            conn.commit()
+            conn.close()
+
+
+def get_all_webpush_subs() -> list:
+    subs = []
+    if USE_REDIS:
+        raw_list = _redis_cmd("HGETALL", "noor:webpush_subs")
+        if isinstance(raw_list, list):
+            for i in range(0, len(raw_list) - 1, 2):
+                try:
+                    item = json.loads(raw_list[i + 1])
+                    if item.get("alerts_enabled", 1):
+                        subs.append(item)
+                except Exception:
+                    pass
+        elif isinstance(raw_list, dict):
+            for v in raw_list.values():
+                try:
+                    item = json.loads(v) if isinstance(v, str) else v
+                    if item.get("alerts_enabled", 1):
+                        subs.append(item)
+                except Exception:
+                    pass
+        return subs
+
+    with DB_LOCK:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("CREATE TABLE IF NOT EXISTS webpush_subs (id TEXT PRIMARY KEY, data TEXT)")
+        rows = conn.execute("SELECT data FROM webpush_subs").fetchall()
+        conn.close()
+        for (raw,) in rows:
+            try:
+                item = json.loads(raw)
+                if item.get("alerts_enabled", 1):
+                    subs.append(item)
+            except Exception:
+                pass
+    return subs
+
+
+def send_webpush_notification(sub_record: dict, title: str, body: str, url: str = "/") -> bool:
+    if not (VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY):
+        return False
+    try:
+        from pywebpush import webpush, WebPushException
+        sub_info = sub_record.get("subscription")
+        if not sub_info:
+            return False
+        webpush(
+            subscription_info=sub_info,
+            data=json.dumps({"title": title, "body": body, "url": url}, ensure_ascii=False),
+            vapid_private_key=VAPID_PRIVATE_KEY,
+            vapid_claims=VAPID_CLAIMS,
+            ttl=300,
+        )
+        return True
+    except Exception as ex:
+        resp = getattr(ex, "response", None)
+        if resp is not None and getattr(resp, "status_code", None) in (404, 410):
+            delete_webpush_sub(sub_record.get("id", ""))
+        else:
+            logger.error("WebPush send error: %s", ex)
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -1533,7 +1652,58 @@ def _run_alarm_check_once() -> dict:
                 except Exception:
                     pass
 
-    return {"ok": True, "time": now_hm, "users_checked": len(users), "sent": sent_count}
+    # Also send direct Phone Web Push Notifications to all website/PWA subscribers
+    push_subs = get_all_webpush_subs()
+    push_sent = 0
+    for ps in push_subs:
+        sid = ps.get("id", "")
+        city_id = ps.get("city_id", "oujda")
+        city = CITY_BY_ID.get(city_id, CITY_BY_ID["oujda"])
+        day_data = get_today_times(city_id)
+        if not day_data:
+            continue
+        timings = day_data.get("timings", {})
+
+        for p_key in ALERT_PRAYERS:
+            p_time = timings.get(p_key, "")
+            if ":" not in p_time:
+                continue
+            if p_time == now_hm and mark_alert_sent(f"wp_{sid}", f"{today_str}_{p_key}_exact"):
+                if send_webpush_notification(
+                    ps,
+                    f"🕌 حان موعد أذان {PRAYER_NAMES_AR[p_key]}",
+                    f"بتوقيت مدينة {city['ar']} ({p_time}) — اللهم رب هذه الدعوة التامة...",
+                    "/?tab=prayers",
+                ):
+                    push_sent += 1
+
+            pre_mins = int(ps.get("pre_alert_mins", 10))
+            if pre_mins > 0:
+                hh, mm = map(int, p_time.split(":"))
+                pre_dt = now.replace(hour=hh, minute=mm, second=0, microsecond=0) - timedelta(minutes=pre_mins)
+                if pre_dt.strftime("%H:%M") == now_hm and mark_alert_sent(f"wp_{sid}", f"{today_str}_{p_key}_pre{pre_mins}"):
+                    if send_webpush_notification(
+                        ps,
+                        f"⏳ تذكير قبل أذان {PRAYER_NAMES_AR[p_key]}",
+                        f"تبقى {pre_mins} دقائق على الأذان في مدينة {city['ar']} ({p_time}).",
+                        "/?tab=prayers",
+                    ):
+                        push_sent += 1
+
+        if ps.get("adhkar_alerts", 1):
+            if now_hm == "07:30" and mark_alert_sent(f"wp_{sid}", f"{today_str}_morning_adhkar"):
+                if send_webpush_notification(ps, "🌅 أذكار الصباح", "لا تنسَ قراءة أذكار الصباح لحفظ يومك وبركته.", "/?tab=adhkar"):
+                    push_sent += 1
+            if now_hm == "17:30" and mark_alert_sent(f"wp_{sid}", f"{today_str}_evening_adhkar"):
+                if send_webpush_notification(ps, "🌙 أذكار المساء", "حان وقت أذكار المساء، ألا بذكر الله تطمئن القلوب.", "/?tab=adhkar"):
+                    push_sent += 1
+
+        if ps.get("kahf_alert", 1) and now.weekday() == 4 and now_hm == "10:00":
+            if mark_alert_sent(f"wp_{sid}", f"{today_str}_kahf"):
+                if send_webpush_notification(ps, "🕌 جمعة مباركة — سورة الكهف", "لا تنسَ قراءة سورة الكهف برواية ورش والإكثار من الصلاة على النبي ﷺ.", "/?tab=quran"):
+                    push_sent += 1
+
+    return {"ok": True, "time": now_hm, "tg_users": len(users), "tg_sent": sent_count, "push_users": len(push_subs), "push_sent": push_sent}
 
 
 @app.route("/webhook", methods=["POST"])
@@ -1836,8 +2006,8 @@ def pwa_manifest():
 
 @app.route("/sw.js")
 def pwa_sw():
-    sw_js = """const CACHE_NAME = 'noor-maghrib-v9';
-const ASSETS = ['/', '/manifest.json', '/icon.svg', '/api/cities', '/api/content'];
+    sw_js = """const CACHE_NAME = 'noor-maghrib-v10';
+const ASSETS = ['/', '/manifest.json', '/icon-192.png', '/api/cities', '/api/content'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
 });
@@ -1847,8 +2017,78 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
 });
+self.addEventListener('push', e => {
+  let data = { title: '🕌 نور المغرب', body: 'حان موعد الصلاة', url: '/' };
+  try {
+    if (e.data) data = Object.assign(data, e.data.json());
+  } catch (err) {
+    if (e.data) data.body = e.data.text();
+  }
+  e.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      dir: 'rtl',
+      lang: 'ar',
+      vibrate: [250, 120, 250],
+      requireInteraction: true,
+      data: { url: data.url || '/' }
+    })
+  );
+});
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const target = (e.notification.data && e.notification.data.url) || '/';
+  e.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      for (const client of list) {
+        if ('focus' in client) return client.focus();
+      }
+      if (clients.openWindow) return clients.openWindow(target);
+    })
+  );
+});
 """
     return Response(sw_js, mimetype="application/javascript")
+
+
+@app.route("/api/push/vapid-key")
+def api_push_vapid_key():
+    return jsonify({"public_key": VAPID_PUBLIC_KEY, "configured": bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY)})
+
+
+@app.route("/api/push/subscribe", methods=["POST"])
+def api_push_subscribe():
+    body = request.get_json(silent=True) or {}
+    sid = save_webpush_sub(body)
+    if not sid:
+        return jsonify({"ok": False, "error": "Invalid subscription"}), 400
+    return jsonify({"ok": True, "id": sid})
+
+
+@app.route("/api/push/unsubscribe", methods=["POST"])
+def api_push_unsubscribe():
+    body = request.get_json(silent=True) or {}
+    endpoint = (body.get("subscription") or {}).get("endpoint", "") or body.get("endpoint", "")
+    if endpoint:
+        delete_webpush_sub(_sub_id(endpoint))
+    return jsonify({"ok": True})
+
+
+@app.route("/api/push/test", methods=["POST"])
+def api_push_test():
+    body = request.get_json(silent=True) or {}
+    sub = body.get("subscription")
+    city_id = body.get("city_id", "oujda")
+    city = CITY_BY_ID.get(city_id, CITY_BY_ID["oujda"])
+    ok = send_webpush_notification(
+        {"subscription": sub, "id": _sub_id((sub or {}).get("endpoint", ""))},
+        "🕌 إشعارات نور المغرب مفعّلة بنجاح!",
+        f"ستصلك تنبيهات الأذان والأذكار مباشرة على هاتفك بتوقيت مدينة {city['ar']}.",
+        "/?tab=prayers",
+    )
+    return jsonify({"ok": ok})
 
 
 @app.route("/api/user/settings", methods=["GET", "POST"])

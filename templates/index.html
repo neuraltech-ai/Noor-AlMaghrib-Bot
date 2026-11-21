@@ -492,6 +492,24 @@
 
       <div class="glass-card rounded-2xl p-4 space-y-4">
         <h3 class="text-sm font-bold text-amber-300">🔔 إعدادات منبه الصلاة والتنبيهات</h3>
+
+        <!-- Direct Phone Push Notifications Card (Works even without Telegram!) -->
+        <div class="bg-emerald-950/80 border border-amber-400/30 rounded-xl p-3 space-y-2.5">
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <div class="text-xs font-extrabold text-amber-300">📲 إشعارات الهاتف المباشرة (حتى والتطبيق مغلق)</div>
+              <div id="pushStatusText" class="text-[10px] text-emerald-200/80 mt-0.5">تصلك تنبيهات الأذان مباشرة في شريط إشعارات هاتفك دون الحاجة لتيليجرام</div>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <button onclick="enablePhonePushNotifications()" id="enablePushBtn" class="py-2 px-3 rounded-xl gold-gradient text-emerald-950 font-extrabold text-xs shadow">
+              🔔 تفعيل إشعارات الهاتف
+            </button>
+            <button onclick="sendTestPhoneNotification()" id="testPushBtn" class="py-2 px-3 rounded-xl bg-emerald-900 text-amber-200 font-bold text-xs border border-amber-400/30 hidden">
+              ⚡ تجربة إشعار الآن
+            </button>
+          </div>
+        </div>
         <label class="flex items-center justify-between py-2 border-b border-emerald-800/50">
           <span class="text-sm">تفعيل منبه الأذان</span>
           <input type="checkbox" id="setAlerts" onchange="saveSettings()" class="w-5 h-5 accent-amber-400" checked />
@@ -742,6 +760,7 @@
       renderSeerahAndProphets();
       renderInteractiveKhatma();
       initInteractiveMushaf();
+      checkExistingPushSub();
       loadWarshSurah(1);
 
       if (contentData.inspirations?.length) {
@@ -1167,6 +1186,7 @@
     async function selectCity(cid) {
       closeCityModal();
       await loadCityData(cid);
+      if (activePushSubscription) syncPushSubWithServer(activePushSubscription).catch(() => {});
       if (chatId) {
         fetch('/api/user/settings', {
           method: 'POST',
@@ -1185,6 +1205,7 @@
         kahf_alert: document.getElementById('setKahf').checked ? 1 : 0,
       };
       localStorage.setItem('noor_alarm_settings', JSON.stringify(payload));
+      if (activePushSubscription) syncPushSubWithServer(activePushSubscription).catch(() => {});
       if (chatId) {
         try {
           await fetch('/api/user/settings', {
@@ -1627,6 +1648,105 @@
       localStorage.setItem('noor_read_pages', '[]');
       updateMarkReadBtnState();
       updateMushafStatsUI();
+    }
+
+
+    // =========================================================================
+    // Direct Phone Web Push Notifications (PWA / Chrome / Safari iOS 16.4+)
+    // =========================================================================
+    let activePushSubscription = null;
+
+    function urlBase64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - base64String.length % 4) % 4);
+      const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const rawData = window.atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+      for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+      return outputArray;
+    }
+
+    async function checkExistingPushSub() {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          activePushSubscription = sub;
+          const btn = document.getElementById('enablePushBtn');
+          const tBtn = document.getElementById('testPushBtn');
+          const st = document.getElementById('pushStatusText');
+          if (btn) btn.innerText = '✅ إشعارات الهاتف مفعّلة';
+          if (tBtn) tBtn.classList.remove('hidden');
+          if (st) st.innerText = '✅ هاتفك مسجّل لاستقبال أذان مدينتك وتنبيهات الأذكار تلقائياً 24/7.';
+        }
+      } catch (e) {}
+    }
+
+    async function syncPushSubWithServer(subObj) {
+      if (!subObj) return;
+      const payload = {
+        subscription: subObj.toJSON ? subObj.toJSON() : subObj,
+        city_id: currentCity,
+        alerts_enabled: document.getElementById('setAlerts').checked ? 1 : 0,
+        pre_alert_mins: document.getElementById('setPreAlert').checked ? 10 : 0,
+        adhkar_alerts: document.getElementById('setAdhkar').checked ? 1 : 0,
+        kahf_alert: document.getElementById('setKahf').checked ? 1 : 0,
+      };
+      await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    }
+
+    async function enablePhonePushNotifications() {
+      const st = document.getElementById('pushStatusText');
+      if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+        st.innerText = '⚠️ لتفعيل الإشعارات، افتح الموقع في متصفح Chrome (أو أضفه للشاشة الرئيسية في آيفون).';
+        return;
+      }
+      try {
+        st.innerText = '⏳ جاري طلب إذن الإشعارات من الهاتف...';
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') {
+          st.innerText = '❌ لم يتم السماح بالإشعارات؛ يرجى تفعيل إذن الإشعارات للموقع من إعدادات المتصفح.';
+          return;
+        }
+        const keyRes = await fetch('/api/push/vapid-key').then(r => r.json());
+        if (!keyRes.public_key) {
+          st.innerText = '⚠️ يرجى إضافة مفاتيح VAPID_PUBLIC_KEY و VAPID_PRIVATE_KEY في إعدادات Vercel أولاً.';
+          return;
+        }
+        const reg = await navigator.serviceWorker.ready;
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+          sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(keyRes.public_key)
+          });
+        }
+        activePushSubscription = sub;
+        await syncPushSubWithServer(sub);
+        document.getElementById('enablePushBtn').innerText = '✅ إشعارات الهاتف مفعّلة';
+        document.getElementById('testPushBtn').classList.remove('hidden');
+        st.innerText = '✅ تم تفعيل إشعارات الهاتف بنجاح! اضغط «تجربة إشعار الآن» للتأكد.';
+      } catch (err) {
+        st.innerText = '⚠️ تعذر التفعيل داخل متصفح تيليجرام الداخلي؛ افتح التطبيق المثبّت على الهاتف أو Chrome واضغط تفعيل.';
+      }
+    }
+
+    async function sendTestPhoneNotification() {
+      if (!activePushSubscription) return;
+      const st = document.getElementById('pushStatusText');
+      st.innerText = '⏳ جاري إرسال إشعار تجريبي إلى هاتفك...';
+      const res = await fetch('/api/push/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription: activePushSubscription.toJSON(), city_id: currentCity })
+      }).then(r => r.json());
+      st.innerText = res.ok
+        ? '✅ تم إرسال الإشعار التجريبي! تفقد شريط إشعارات هاتفك في الأعلى.'
+        : '⚠️ تأكد من إضافة مفاتيح VAPID في Vercel وإعادة النشر.';
     }
 
     function switchTab(tab) {
