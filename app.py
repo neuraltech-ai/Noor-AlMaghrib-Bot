@@ -2006,7 +2006,7 @@ def pwa_manifest():
 
 @app.route("/sw.js")
 def pwa_sw():
-    sw_js = """const CACHE_NAME = 'noor-maghrib-v13';
+    sw_js = """const CACHE_NAME = 'noor-maghrib-v14';
 const ASSETS = ['/', '/manifest.json', '/icon-192.png', '/api/cities', '/api/content'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));

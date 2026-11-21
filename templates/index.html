@@ -1660,6 +1660,21 @@
       return outputArray;
     }
 
+    function updatePushButtonUI(isEnabled) {
+      const btn = document.getElementById('enablePushBtn');
+      const st = document.getElementById('pushStatusText');
+      if (!btn || !st) return;
+      if (isEnabled) {
+        btn.innerText = '🔕 إيقاف التنبيهات';
+        btn.className = 'w-full py-2.5 px-3 rounded-xl bg-emerald-900 hover:bg-emerald-800 text-rose-200 font-bold text-xs border border-rose-400/35 whitespace-nowrap';
+        st.innerText = '✓ التنبيهات مفعّلة على هذا الجهاز وفق توقيت مدينتك';
+      } else {
+        btn.innerText = '🔔 تفعيل التنبيهات';
+        btn.className = 'w-full py-2.5 px-3 rounded-xl gold-gradient text-emerald-950 font-extrabold text-xs shadow whitespace-nowrap';
+        st.innerText = 'تصلك تنبيهات الأذان والأذكار تلقائياً في وقتها';
+      }
+    }
+
     async function checkExistingPushSub() {
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
       try {
@@ -1667,10 +1682,9 @@
         const sub = await reg.pushManager.getSubscription();
         if (sub) {
           activePushSubscription = sub;
-          const btn = document.getElementById('enablePushBtn');
-          const st = document.getElementById('pushStatusText');
-          if (btn) btn.innerText = '✓ التنبيهات مفعّلة';
-          if (st) st.innerText = 'التنبيهات مفعّلة على هذا الجهاز وفق توقيت مدينتك';
+          updatePushButtonUI(true);
+        } else {
+          updatePushButtonUI(false);
         }
       } catch (e) {}
     }
@@ -1694,6 +1708,25 @@
 
     async function enablePhonePushNotifications() {
       const st = document.getElementById('pushStatusText');
+      // If already subscribed, toggle OFF (unsubscribe cleanly from device & cloud)
+      if (activePushSubscription) {
+        try {
+          st.innerText = 'جاري إيقاف التنبيهات على جهازك...';
+          const endpoint = activePushSubscription.endpoint;
+          await fetch('/api/push/unsubscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ endpoint })
+          }).catch(() => {});
+          await activePushSubscription.unsubscribe();
+          activePushSubscription = null;
+          updatePushButtonUI(false);
+          st.innerText = 'تم إيقاف تنبيهات الهاتف بنجاح';
+        } catch (err) {
+          st.innerText = 'تعذر إيقاف التنبيهات، يرجى المحاولة مجدداً.';
+        }
+        return;
+      }
       if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
         st.innerText = '⚠️ لتفعيل الإشعارات، افتح الموقع في متصفح Chrome (أو أضفه للشاشة الرئيسية في آيفون).';
         return;
@@ -1720,7 +1753,7 @@
         }
         activePushSubscription = sub;
         await syncPushSubWithServer(sub);
-        document.getElementById('enablePushBtn').innerText = '✓ التنبيهات مفعّلة';
+        updatePushButtonUI(true);
         st.innerText = '✓ تم تفعيل تنبيهات الصلاة على جهازك بنجاح';
         fetch('/api/push/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscription: sub.toJSON(), city_id: currentCity }) }).catch(() => {});
       } catch (err) {
