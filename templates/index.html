@@ -493,20 +493,18 @@
       <div class="glass-card rounded-2xl p-4 space-y-4">
         <h3 class="text-sm font-bold text-amber-300">🔔 إعدادات منبه الصلاة والتنبيهات</h3>
 
-        <!-- Direct Phone Push Notifications Card (Works even without Telegram!) -->
-        <div class="bg-emerald-950/80 border border-amber-400/30 rounded-xl p-3 space-y-2.5">
-          <div class="flex items-center justify-between gap-2">
-            <div>
-              <div class="text-xs font-extrabold text-amber-300">📲 إشعارات الهاتف المباشرة (حتى والتطبيق مغلق)</div>
-              <div id="pushStatusText" class="text-[10px] text-emerald-200/80 mt-0.5">تصلك تنبيهات الأذان مباشرة في شريط إشعارات هاتفك دون الحاجة لتيليجرام</div>
-            </div>
+        <!-- Direct Phone Push Notifications Card -->
+        <div class="bg-emerald-950/80 border border-amber-400/30 rounded-xl p-3.5 space-y-2.5">
+          <div>
+            <div class="text-xs font-extrabold text-amber-300">🔔 تنبيهات الصلاة على الهاتف</div>
+            <div id="pushStatusText" class="text-[11px] text-emerald-200/80 mt-0.5">تصلك تنبيهات الأذان والأذكار تلقائياً في وقتها</div>
           </div>
           <div class="grid grid-cols-2 gap-2">
-            <button onclick="enablePhonePushNotifications()" id="enablePushBtn" class="py-2 px-3 rounded-xl gold-gradient text-emerald-950 font-extrabold text-xs shadow">
-              🔔 تفعيل إشعارات الهاتف
+            <button onclick="enablePhonePushNotifications()" id="enablePushBtn" class="py-2 px-2.5 rounded-xl gold-gradient text-emerald-950 font-extrabold text-xs shadow whitespace-nowrap">
+              🔔 تفعيل التنبيهات
             </button>
-            <button onclick="sendTestPhoneNotification()" id="testPushBtn" class="py-2 px-3 rounded-xl bg-emerald-900 text-amber-200 font-bold text-xs border border-amber-400/30 hidden">
-              ⚡ تجربة إشعار الآن
+            <button onclick="sendTestPhoneNotification()" id="testPushBtn" class="py-2 px-2.5 rounded-xl bg-emerald-900 text-amber-200 font-bold text-xs border border-amber-400/30 whitespace-nowrap hidden">
+              🔔 اختبار التنبيه
             </button>
           </div>
         </div>
@@ -526,7 +524,7 @@
           <span class="text-sm">تذكير سورة الكهف (يوم الجمعة)</span>
           <input type="checkbox" id="setKahf" onchange="saveSettings()" class="w-5 h-5 accent-amber-400" checked />
         </label>
-        <p id="settingsSavedMsg" class="text-xs text-emerald-300 hidden">✅ تم حفظ الإعدادات ومزامنتها مع البوت</p>
+        <p id="settingsSavedMsg" class="text-xs text-emerald-300 hidden">✓ تم حفظ إعدادات التنبيه بنجاح</p>
       </div>
     </section>
 
@@ -1675,9 +1673,9 @@
           const btn = document.getElementById('enablePushBtn');
           const tBtn = document.getElementById('testPushBtn');
           const st = document.getElementById('pushStatusText');
-          if (btn) btn.innerText = '✅ إشعارات الهاتف مفعّلة';
+          if (btn) btn.innerText = '✓ التنبيهات مفعّلة';
           if (tBtn) tBtn.classList.remove('hidden');
-          if (st) st.innerText = '✅ هاتفك مسجّل لاستقبال أذان مدينتك وتنبيهات الأذكار تلقائياً 24/7.';
+          if (st) st.innerText = 'التنبيهات مفعّلة على هذا الجهاز وفق توقيت مدينتك';
         }
       } catch (e) {}
     }
@@ -1706,7 +1704,7 @@
         return;
       }
       try {
-        st.innerText = '⏳ جاري طلب إذن الإشعارات من الهاتف...';
+        st.innerText = 'جاري تفعيل التنبيهات على جهازك...';
         const perm = await Notification.requestPermission();
         if (perm !== 'granted') {
           st.innerText = '❌ لم يتم السماح بالإشعارات؛ يرجى تفعيل إذن الإشعارات للموقع من إعدادات المتصفح.';
@@ -1714,7 +1712,7 @@
         }
         const keyRes = await fetch('/api/push/vapid-key').then(r => r.json());
         if (!keyRes.public_key) {
-          st.innerText = '⚠️ يرجى إضافة مفاتيح VAPID_PUBLIC_KEY و VAPID_PRIVATE_KEY في إعدادات Vercel أولاً.';
+          st.innerText = 'خدمة التنبيهات قيد التحديث حالياً، يرجى المحاولة بعد قليل.';
           return;
         }
         const reg = await navigator.serviceWorker.ready;
@@ -1727,9 +1725,9 @@
         }
         activePushSubscription = sub;
         await syncPushSubWithServer(sub);
-        document.getElementById('enablePushBtn').innerText = '✅ إشعارات الهاتف مفعّلة';
+        document.getElementById('enablePushBtn').innerText = '✓ التنبيهات مفعّلة';
         document.getElementById('testPushBtn').classList.remove('hidden');
-        st.innerText = '✅ تم تفعيل إشعارات الهاتف بنجاح! اضغط «تجربة إشعار الآن» للتأكد.';
+        st.innerText = '✓ تم تفعيل تنبيهات الصلاة على جهازك بنجاح';
       } catch (err) {
         st.innerText = '⚠️ تعذر التفعيل داخل متصفح تيليجرام الداخلي؛ افتح التطبيق المثبّت على الهاتف أو Chrome واضغط تفعيل.';
       }
@@ -1738,15 +1736,15 @@
     async function sendTestPhoneNotification() {
       if (!activePushSubscription) return;
       const st = document.getElementById('pushStatusText');
-      st.innerText = '⏳ جاري إرسال إشعار تجريبي إلى هاتفك...';
+      st.innerText = 'جاري إرسال تنبيه تجريبي...';
       const res = await fetch('/api/push/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subscription: activePushSubscription.toJSON(), city_id: currentCity })
       }).then(r => r.json());
       st.innerText = res.ok
-        ? '✅ تم إرسال الإشعار التجريبي! تفقد شريط إشعارات هاتفك في الأعلى.'
-        : '⚠️ تأكد من إضافة مفاتيح VAPID في Vercel وإعادة النشر.';
+        ? '✓ تم إرسال تنبيه تجريبي إلى جهازك'
+        : 'تعذر إرسال التنبيه حالياً، يرجى المحاولة مجدداً.';
     }
 
     function switchTab(tab) {
