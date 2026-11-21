@@ -469,7 +469,7 @@
         <div class="bg-emerald-950/80 border border-amber-400/25 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
           <div>
             <div id="selectedHizbTitle" class="text-xs font-bold text-amber-300">الحزب 1 — سورة الفاتحة / البقرة</div>
-            <div class="text-[10px] text-emerald-200/75">الأرباع: 4 أرباع (ربع، نصف، ثلاثة أرباع، تمام الحزب)</div>
+            <div id="selectedHizbPage" class="text-[11px] text-emerald-200/80 mt-0.5">يبدأ من الصفحة 1 في المصحف</div>
           </div>
           <div class="flex items-center gap-1.5">
             <button onclick="openSelectedHizbInMushaf()" class="px-2.5 py-1.5 rounded-lg bg-emerald-800 hover:bg-emerald-700 text-amber-200 text-xs font-bold border border-amber-400/30">
@@ -499,14 +499,9 @@
             <div class="text-xs font-extrabold text-amber-300">🔔 تنبيهات الصلاة على الهاتف</div>
             <div id="pushStatusText" class="text-[11px] text-emerald-200/80 mt-0.5">تصلك تنبيهات الأذان والأذكار تلقائياً في وقتها</div>
           </div>
-          <div class="grid grid-cols-2 gap-2">
-            <button onclick="enablePhonePushNotifications()" id="enablePushBtn" class="py-2 px-2.5 rounded-xl gold-gradient text-emerald-950 font-extrabold text-xs shadow whitespace-nowrap">
-              🔔 تفعيل التنبيهات
-            </button>
-            <button onclick="sendTestPhoneNotification()" id="testPushBtn" class="py-2 px-2.5 rounded-xl bg-emerald-900 text-amber-200 font-bold text-xs border border-amber-400/30 whitespace-nowrap hidden">
-              🔔 اختبار التنبيه
-            </button>
-          </div>
+          <button onclick="enablePhonePushNotifications()" id="enablePushBtn" class="w-full py-2.5 px-3 rounded-xl gold-gradient text-emerald-950 font-extrabold text-xs shadow whitespace-nowrap">
+            🔔 تفعيل التنبيهات
+          </button>
         </div>
         <label class="flex items-center justify-between py-2 border-b border-emerald-800/50">
           <span class="text-sm">تفعيل منبه الأذان</span>
@@ -916,7 +911,9 @@
       const info = hmap[String(selectedHizb)] || { surah: 1, label: 'الفاتحة / البقرة' };
       const isDone = completedAhzab.includes(selectedHizb);
       document.getElementById('selectedHizbTitle').innerText =
-        `الحزب ${selectedHizb} — سورة ${info.label} ${isDone ? '(مكتمل ✅)' : ''}`;
+        `الحزب ${selectedHizb} — سورة ${info.label} ${isDone ? '(مكتمل ✓)' : ''}`;
+      const hpEl = document.getElementById('selectedHizbPage');
+      if (hpEl) hpEl.innerText = `يبدأ من الصفحة ${startPageForHizb(selectedHizb)} في المصحف`;
       document.getElementById('toggleHizbBtn').innerText = isDone ? '↩️ إلغاء الإتمام' : '✅ إتمام الحزب';
 
       let html = '';
@@ -1671,10 +1668,8 @@
         if (sub) {
           activePushSubscription = sub;
           const btn = document.getElementById('enablePushBtn');
-          const tBtn = document.getElementById('testPushBtn');
           const st = document.getElementById('pushStatusText');
           if (btn) btn.innerText = '✓ التنبيهات مفعّلة';
-          if (tBtn) tBtn.classList.remove('hidden');
           if (st) st.innerText = 'التنبيهات مفعّلة على هذا الجهاز وفق توقيت مدينتك';
         }
       } catch (e) {}
@@ -1726,8 +1721,8 @@
         activePushSubscription = sub;
         await syncPushSubWithServer(sub);
         document.getElementById('enablePushBtn').innerText = '✓ التنبيهات مفعّلة';
-        document.getElementById('testPushBtn').classList.remove('hidden');
         st.innerText = '✓ تم تفعيل تنبيهات الصلاة على جهازك بنجاح';
+        fetch('/api/push/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscription: sub.toJSON(), city_id: currentCity }) }).catch(() => {});
       } catch (err) {
         st.innerText = '⚠️ تعذر التفعيل داخل متصفح تيليجرام الداخلي؛ افتح التطبيق المثبّت على الهاتف أو Chrome واضغط تفعيل.';
       }
