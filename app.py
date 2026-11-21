@@ -80,6 +80,17 @@ MONTH_NAMES_AR = {
     9: "شتنبر", 10: "أكتوبر", 11: "نونبر", 12: "دجنبر"
 }
 
+HIJRI_MONTHS_MA = {
+    1: "محرم", 2: "صفر", 3: "ربيع الأول", 4: "ربيع الثاني",
+    5: "جمادى الأولى", 6: "جمادى الثانية", 7: "رجب", 8: "شعبان",
+    9: "رمضان", 10: "شوال", 11: "ذو القعدة", 12: "ذو الحجة"
+}
+
+WEEKDAYS_AR_CLEAN = {
+    "Sunday": "الأحد", "Monday": "الاثنين", "Tuesday": "الثلاثاء",
+    "Wednesday": "الأربعاء", "Thursday": "الخميس", "Friday": "الجمعة", "Saturday": "السبت"
+}
+
 ALERT_PRAYERS = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
 
 
@@ -444,13 +455,17 @@ def fetch_monthly_times(city_id: str, year: int, month: int) -> list:
             date_info = item.get("date", {})
             greg = date_info.get("gregorian", {})
             hijri = date_info.get("hijri", {})
+            en_wday = greg.get("weekday", {}).get("en", "")
+            h_mnum = int(hijri.get("month", {}).get("number", 0) or 0)
+            clean_wday = WEEKDAYS_AR_CLEAN.get(en_wday) or hijri.get("weekday", {}).get("ar", "")
+            clean_hmonth = HIJRI_MONTHS_MA.get(h_mnum) or hijri.get("month", {}).get("ar", "")
             parsed.append(
                 {
                     "day": int(greg.get("day", 1)),
                     "gregorian": greg.get("date", ""),
-                    "weekday_ar": hijri.get("weekday", {}).get("ar", ""),
+                    "weekday_ar": clean_wday,
                     "hijri_day": hijri.get("day", ""),
-                    "hijri_month": hijri.get("month", {}).get("ar", ""),
+                    "hijri_month": clean_hmonth,
                     "hijri_year": hijri.get("year", ""),
                     "timings": {
                         "Fajr": clean_time(timings.get("Fajr", "")),
@@ -839,7 +854,21 @@ def generate_single_page_a4_pdf(city_id: str, year: int, month: int) -> bytes:
     img = Image.new("RGB", (W, H), (255, 255, 255))
     draw = ImageDraw.Draw(img)
 
+    cairo_tmp = "/tmp/Cairo-Bold.ttf"
+    if not os.path.exists(cairo_tmp):
+        try:
+            r_font = requests.get(
+                "https://github.com/google/fonts/raw/main/ofl/cairo/static/Cairo-Bold.ttf",
+                timeout=8,
+            )
+            if r_font.status_code == 200 and len(r_font.content) > 20000:
+                with open(cairo_tmp, "wb") as ff:
+                    ff.write(r_font.content)
+        except Exception:
+            pass
+
     font_paths = [
+        cairo_tmp,
         "/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf",
         "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Bold.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -857,17 +886,17 @@ def generate_single_page_a4_pdf(city_id: str, year: int, month: int) -> bytes:
     hijri_span = f"{days[0]['hijri_month']} {days[0]['hijri_year']} هـ" if days else ""
     draw.text((W // 2, 105), shape_ar(f"شهر {m_name} {year} م  |  {hijri_span} — وزارة الأوقاف والشؤون الإسلامية بالمغرب"), fill=(230, 245, 238), font=f_sub, anchor="mm")
 
-    # Table Columns (Right-to-Left layout)
+    # Table Columns (Right-to-Left: اسم اليوم -> الميلادي -> الهجري -> الصلوات)
     col_Bounds = [
-        (1110, 1200, "اليوم"),
-        (980, 1110, "الأيام"),
-        (800, 980, "التاريخ الهجري"),
-        (675, 800, "الفجر"),
-        (550, 675, "الشروق"),
-        (425, 550, "الظهر"),
-        (300, 425, "العصر"),
-        (170, 300, "المغرب"),
-        (40, 170, "العشاء"),
+        (1075, 1200, "اليوم"),
+        (965, 1075, "الميلادي"),
+        (795, 965, "الهجري"),
+        (670, 795, "الفجر"),
+        (545, 670, "الشروق"),
+        (420, 545, "الظهر"),
+        (295, 420, "العصر"),
+        (168, 295, "المغرب"),
+        (40, 168, "العشاء"),
     ]
 
     top_y = 150
@@ -885,8 +914,8 @@ def generate_single_page_a4_pdf(city_id: str, year: int, month: int) -> bytes:
         draw.rectangle([40, cur_y, W - 40, cur_y + row_h], fill=bg, outline=(203, 213, 225), width=1)
         t = d["timings"]
         vals = [
-            str(d["day"]),
             shape_ar(str(d["weekday_ar"])),
+            shape_ar(f"{d['day']} {m_name}"),
             shape_ar(f"{d['hijri_day']} {d['hijri_month']}"),
             t["Fajr"],
             t["Sunrise"],
@@ -901,7 +930,7 @@ def generate_single_page_a4_pdf(city_id: str, year: int, month: int) -> bytes:
             draw.line([(x1, cur_y), (x1, cur_y + row_h)], fill=(203, 213, 225), width=1)
         cur_y += row_h
 
-    draw.text((W // 2, H - 30), shape_ar("تطبيق وبوت نور المغرب الإسلامي — المواقيت الرسمية ومصحف رواية ورش عن نافع"), fill=(100, 116, 139), font=f_td, anchor="mm")
+    draw.text((W // 2, H - 30), shape_ar("صدقة جارية — اللهم تقبله منا ومن والدينا ومن ساهم في نشره — تطبيق نور المغرب الإسلامي"), fill=(8, 51, 40), font=f_td, anchor="mm")
 
     out = io.BytesIO()
     img.save(out, format="PDF", resolution=150.0)
@@ -921,8 +950,8 @@ def build_printable_monthly_html(city_id: str, year: int, month: int) -> str:
         t = d["timings"]
         rows_html.append(
             f"<tr>"
-            f"<td><b>{d['day']}</b></td>"
-            f"<td>{d['weekday_ar']}</td>"
+            f"<td><b>{d['weekday_ar']}</b></td>"
+            f"<td>{d['day']} {m_name}</td>"
             f"<td>{d['hijri_day']} {d['hijri_month']}</td>"
             f"<td>{t['Fajr']}</td>"
             f"<td>{t['Sunrise']}</td>"
@@ -969,7 +998,7 @@ def build_printable_monthly_html(city_id: str, year: int, month: int) -> str:
   <table>
     <thead>
       <tr>
-        <th>اليوم</th><th>الأيام</th><th>التاريخ الهجري</th>
+        <th>اليوم</th><th>التاريخ الميلادي</th><th>التاريخ الهجري</th>
         <th>الفجر</th><th>الشروق</th><th>الظهر</th><th>العصر</th><th>المغرب</th><th>العشاء</th>
       </tr>
     </thead>
@@ -977,7 +1006,7 @@ def build_printable_monthly_html(city_id: str, year: int, month: int) -> str:
       {"".join(rows_html)}
     </tbody>
   </table>
-  <div class="footer">تم التوليد عبر تطبيق وبوت نور المغرب الإسلامي — رواية ورش عن نافع</div>
+  <div class="footer">صدقة جارية — اللهم تقبّله منا ومن والدينا ومن ساهم في نشره — تطبيق نور المغرب الإسلامي</div>
   </div>
   <script>
     function downloadSinglePagePDF() {{
@@ -2006,7 +2035,7 @@ def pwa_manifest():
 
 @app.route("/sw.js")
 def pwa_sw():
-    sw_js = """const CACHE_NAME = 'noor-maghrib-v14';
+    sw_js = """const CACHE_NAME = 'noor-maghrib-v15';
 const ASSETS = ['/', '/manifest.json', '/icon-192.png', '/api/cities', '/api/content'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
