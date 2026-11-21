@@ -1488,7 +1488,7 @@ def scheduler_loop():
                                 msg = (
                                     f"🕌 <b>حان الآن موعد أذان {PRAYER_NAMES_AR[p_key]}</b>\n"
                                     f"📍 بتوقيت مدينة <b>{city['ar']}</b> ({p_time})\n"
-                                    f"🤲 <i>اللهم رب هذه الدعوة التامة والصلاة القائمة آت محمداً الوسيلة والفضيلة...</i>"
+                                    f"🤲 <i>اللهم رب هذه الدعوة التامة، والصلاة القائمة، آت محمداً الوسيلة والفضيلة، وابعثه مقاماً محموداً الذي وعدته.</i>"
                                 )
                                 try:
                                     bot.send_message(chat_id, msg)
@@ -1632,7 +1632,7 @@ def _run_alarm_check_once() -> dict:
                 msg = (
                     f"🕌 <b>حان الآن موعد أذان {PRAYER_NAMES_AR[p_key]}</b>\n"
                     f"📍 بتوقيت مدينة <b>{city['ar']}</b> ({p_time})\n"
-                    f"🤲 <i>اللهم رب هذه الدعوة التامة والصلاة القائمة آت محمداً الوسيلة والفضيلة...</i>"
+                    f"🤲 <i>اللهم رب هذه الدعوة التامة، والصلاة القائمة، آت محمداً الوسيلة والفضيلة، وابعثه مقاماً محموداً الذي وعدته.</i>"
                 )
                 try:
                     bot.send_message(chat_id, msg)
@@ -1701,7 +1701,7 @@ def _run_alarm_check_once() -> dict:
                 if send_webpush_notification(
                     ps,
                     f"🕌 حان موعد أذان {PRAYER_NAMES_AR[p_key]}",
-                    f"بتوقيت مدينة {city['ar']} ({p_time}) — اللهم رب هذه الدعوة التامة...",
+                    f"بتوقيت مدينة {city['ar']} ({p_time}) — اللهم رب هذه الدعوة التامة والصلاة القائمة آت محمداً الوسيلة والفضيلة وابعثه مقاماً محموداً الذي وعدته.",
                     "/?tab=prayers",
                 ):
                     push_sent += 1
@@ -2035,7 +2035,7 @@ def pwa_manifest():
 
 @app.route("/sw.js")
 def pwa_sw():
-    sw_js = """const CACHE_NAME = 'noor-maghrib-v15';
+    sw_js = """const CACHE_NAME = 'noor-maghrib-v16';
 const ASSETS = ['/', '/manifest.json', '/icon-192.png', '/api/cities', '/api/content'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
