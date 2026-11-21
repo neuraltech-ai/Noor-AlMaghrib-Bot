@@ -1628,7 +1628,10 @@ def _run_alarm_check_once() -> dict:
             if ":" not in p_time:
                 continue
 
-            if p_time == now_hm and mark_alert_sent(chat_id, f"{today_str}_{p_key}_exact"):
+            hh, mm = map(int, p_time.split(":"))
+            p_dt = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+            diff_exact = (now - p_dt).total_seconds()
+            if 0 <= diff_exact < 300 and mark_alert_sent(chat_id, f"{today_str}_{p_key}_exact"):
                 msg = (
                     f"🕌 <b>حان الآن موعد أذان {PRAYER_NAMES_AR[p_key]}</b>\n"
                     f"📍 بتوقيت مدينة <b>{city['ar']}</b> ({p_time})\n"
@@ -1642,9 +1645,9 @@ def _run_alarm_check_once() -> dict:
 
             pre_mins = u.get("pre_alert_mins", 10)
             if pre_mins > 0:
-                hh, mm = map(int, p_time.split(":"))
-                pre_dt = now.replace(hour=hh, minute=mm, second=0, microsecond=0) - timedelta(minutes=pre_mins)
-                if pre_dt.strftime("%H:%M") == now_hm and mark_alert_sent(chat_id, f"{today_str}_{p_key}_pre{pre_mins}"):
+                pre_dt = p_dt - timedelta(minutes=pre_mins)
+                diff_pre = (now - pre_dt).total_seconds()
+                if 0 <= diff_pre < 300 and mark_alert_sent(chat_id, f"{today_str}_{p_key}_pre{pre_mins}"):
                     msg = (
                         f"⏳ <b>تذكير قبل الصلاة</b>\n"
                         f"تبقى <b>{pre_mins} دقائق</b> على أذان <b>{PRAYER_NAMES_AR[p_key]}</b> "
@@ -1697,20 +1700,23 @@ def _run_alarm_check_once() -> dict:
             p_time = timings.get(p_key, "")
             if ":" not in p_time:
                 continue
-            if p_time == now_hm and mark_alert_sent(f"wp_{sid}", f"{today_str}_{p_key}_exact"):
+            hh, mm = map(int, p_time.split(":"))
+            p_dt = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+            diff_exact = (now - p_dt).total_seconds()
+            if 0 <= diff_exact < 300 and mark_alert_sent(f"wp_{sid}", f"{today_str}_{p_key}_exact"):
                 if send_webpush_notification(
                     ps,
                     f"🕌 حان موعد أذان {PRAYER_NAMES_AR[p_key]}",
-                    f"بتوقيت مدينة {city['ar']} ({p_time}) — اللهم رب هذه الدعوة التامة والصلاة القائمة آت محمداً الوسيلة والفضيلة وابعثه مقاماً محموداً الذي وعدته.",
-                    "/?tab=prayers",
+                    f"بتوقيت مدينة {city['ar']} ({p_time}) — اضغط للاستماع إلى الأذان بصوت مؤذنك المفضل",
+                    f"/?tab=prayers&play_adhan=1&prayer={p_key}",
                 ):
                     push_sent += 1
 
             pre_mins = int(ps.get("pre_alert_mins", 10))
             if pre_mins > 0:
-                hh, mm = map(int, p_time.split(":"))
-                pre_dt = now.replace(hour=hh, minute=mm, second=0, microsecond=0) - timedelta(minutes=pre_mins)
-                if pre_dt.strftime("%H:%M") == now_hm and mark_alert_sent(f"wp_{sid}", f"{today_str}_{p_key}_pre{pre_mins}"):
+                pre_dt = p_dt - timedelta(minutes=pre_mins)
+                diff_pre = (now - pre_dt).total_seconds()
+                if 0 <= diff_pre < 300 and mark_alert_sent(f"wp_{sid}", f"{today_str}_{p_key}_pre{pre_mins}"):
                     if send_webpush_notification(
                         ps,
                         f"⏳ تذكير قبل أذان {PRAYER_NAMES_AR[p_key]}",
@@ -2035,7 +2041,7 @@ def pwa_manifest():
 
 @app.route("/sw.js")
 def pwa_sw():
-    sw_js = """const CACHE_NAME = 'noor-maghrib-v16';
+    sw_js = """const CACHE_NAME = 'noor-maghrib-v17';
 const ASSETS = ['/', '/manifest.json', '/icon-192.png', '/api/cities', '/api/content'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
@@ -2072,7 +2078,9 @@ self.addEventListener('notificationclick', e => {
   e.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
       for (const client of list) {
-        if ('focus' in client) return client.focus();
+        if ('navigate' in client && 'focus' in client) {
+          return client.navigate(target).then(() => client.focus());
+        }
       }
       if (clients.openWindow) return clients.openWindow(target);
     })

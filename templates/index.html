@@ -562,6 +562,26 @@
     </div>
   </div>
 
+  <!-- Live Adhan Calling Overlay Modal -->
+  <div id="adhanCallModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="glass-card w-full max-w-sm rounded-2xl p-6 text-center space-y-4 border-2 border-amber-400/60 shadow-2xl">
+      <div class="w-16 h-16 mx-auto rounded-full gold-gradient flex items-center justify-center text-3xl text-emerald-950 shadow-xl animate-pulse">🕌</div>
+      <div>
+        <div class="text-xs text-emerald-200/80">الله أكبر — الله أكبر</div>
+        <h3 id="adhanCallTitle" class="text-xl font-extrabold text-amber-300 mt-1">حان الآن موعد الأذان</h3>
+        <p id="adhanCallSub" class="text-xs text-emerald-100/90 mt-1">اللهم رب هذه الدعوة التامة والصلاة القائمة...</p>
+      </div>
+      <div class="grid grid-cols-2 gap-2 pt-1">
+        <button onclick="playSelectedAdhanNow()" class="py-2.5 rounded-xl gold-gradient text-emerald-950 font-extrabold text-xs shadow">
+          🔊 تشغيل الأذان
+        </button>
+        <button onclick="stopAndCloseAdhanModal()" class="py-2.5 rounded-xl bg-emerald-950 text-rose-200 font-bold text-xs border border-rose-400/40">
+          ⏹ إيقاف وإغلاق
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Install App (PWA) Modal -->
   <div id="installModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm hidden items-center justify-center p-4">
     <div class="glass-card w-full max-w-sm rounded-2xl p-5 space-y-3 text-right">
@@ -773,6 +793,10 @@
       await loadCityData(currentCity);
       setInterval(updateCountdown, 1000);
       if (urlParams.get('tab')) switchTab(urlParams.get('tab'));
+      if (urlParams.get('play_adhan') === '1') {
+        const pKey = urlParams.get('prayer') || '';
+        triggerLiveAdhanCall(PRAYER_AR_MAP[pKey] || 'الصلاة');
+      }
     }
 
     function changeAdhanVoice(url) {
@@ -1005,6 +1029,41 @@
       }).join('');
     }
 
+
+    let lastAutoAdhanKey = '';
+    const PRAYER_AR_MAP = { Fajr: 'الفجر', Dhuhr: 'الظهر', Asr: 'العصر', Maghrib: 'المغرب', Isha: 'العشاء' };
+
+    function triggerLiveAdhanCall(prayerAr) {
+      document.getElementById('adhanCallTitle').innerText = `حان الآن موعد أذان ${prayerAr}`;
+      document.getElementById('adhanCallSub').innerText = `بتوقيت مدينة ${currentCityObj.ar} — بصوت مؤذنك المختار`;
+      const modal = document.getElementById('adhanCallModal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      playSelectedAdhanNow();
+    }
+
+    function playSelectedAdhanNow() {
+      const audio = document.getElementById('adhanAudioEl');
+      const btn = document.getElementById('adhanPlayBtn');
+      const sel = document.getElementById('adhanVoiceSelect');
+      if (sel && sel.value && audio.src !== sel.value) audio.src = sel.value;
+      audio.currentTime = 0;
+      audio.play().then(() => {
+        if (btn) btn.innerText = '⏹ إيقاف';
+      }).catch(() => {});
+    }
+
+    function stopAndCloseAdhanModal() {
+      const audio = document.getElementById('adhanAudioEl');
+      const btn = document.getElementById('adhanPlayBtn');
+      audio.pause();
+      audio.currentTime = 0;
+      if (btn) btn.innerText = '▶️ استماع';
+      const modal = document.getElementById('adhanCallModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
     function updateCountdown() {
       if (!todayTimings.Fajr) return;
       const now = new Date();
@@ -1031,6 +1090,21 @@
       document.getElementById('nextPrayerName').innerText = `${next.icon} ${next.name}`;
       document.getElementById('nextPrayerTime').innerText = `الساعة ${next.time}`;
       document.getElementById('countdownTimer').innerText = `${h}:${m}:${s}`;
+
+      // Auto-play selected Mu'adhin voice when prayer time arrives while app is open
+      if (document.getElementById('setAlerts')?.checked) {
+        const nowHM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        const todayKeyPrefix = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+        for (const pKey of ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha']) {
+          if (todayTimings[pKey] === nowHM) {
+            const k = `${todayKeyPrefix}_${pKey}`;
+            if (lastAutoAdhanKey !== k) {
+              lastAutoAdhanKey = k;
+              triggerLiveAdhanCall(PRAYER_AR_MAP[pKey]);
+            }
+          }
+        }
+      }
     }
 
     function renderAdhkar(catKey) {
@@ -1762,6 +1836,8 @@
           });
         }
         activePushSubscription = sub;
+        document.getElementById('setAlerts').checked = true;
+        await saveSettings();
         await syncPushSubWithServer(sub);
         updatePushButtonUI(true);
         st.innerText = '✓ تم تفعيل تنبيهات الصلاة على جهازك بنجاح';
