@@ -1572,6 +1572,43 @@ def index():
 # ---------------------------------------------------------------------------
 # Vercel Serverless Telegram Webhook & 24/7 Alarm Cron Endpoints (No Render Needed!)
 # ---------------------------------------------------------------------------
+
+_LAST_ALERT_MEM = {}
+
+
+def _send_clean_alert(chat_id: int, text: str) -> bool:
+    """Delete the user's previous alert message before sending the new one so chat stays clean."""
+    if not bot:
+        return False
+    old_id = None
+    if USE_REDIS:
+        old_raw = _redis_cmd("HGET", "noor:last_alert_msg", str(chat_id))
+        if old_raw:
+            try:
+                old_id = int(old_raw)
+            except Exception:
+                old_id = None
+    else:
+        old_id = _LAST_ALERT_MEM.get(chat_id)
+
+    if old_id:
+        try:
+            bot.delete_message(chat_id, old_id)
+        except Exception:
+            pass
+
+    try:
+        sent = bot.send_message(chat_id, text)
+        if sent and getattr(sent, "message_id", None):
+            if USE_REDIS:
+                _redis_cmd("HSET", "noor:last_alert_msg", str(chat_id), str(sent.message_id))
+            else:
+                _LAST_ALERT_MEM[chat_id] = sent.message_id
+        return True
+    except Exception:
+        return False
+
+
 def _run_alarm_check_once() -> dict:
     """Single pass of the prayer alarm check (works on Vercel via cron-job.org)."""
     if not bot:
@@ -1637,11 +1674,8 @@ def _run_alarm_check_once() -> dict:
                     f"📍 بتوقيت مدينة <b>{city['ar']}</b> ({p_time})\n"
                     f"🤲 <i>اللهم رب هذه الدعوة التامة، والصلاة القائمة، آت محمداً الوسيلة والفضيلة، وابعثه مقاماً محموداً الذي وعدته.</i>"
                 )
-                try:
-                    bot.send_message(chat_id, msg)
+                if _send_clean_alert(chat_id, msg):
                     sent_count += 1
-                except Exception:
-                    pass
 
             pre_mins = u.get("pre_alert_mins", 10)
             if pre_mins > 0:
@@ -1653,36 +1687,24 @@ def _run_alarm_check_once() -> dict:
                         f"تبقى <b>{pre_mins} دقائق</b> على أذان <b>{PRAYER_NAMES_AR[p_key]}</b> "
                         f"في مدينة {city['ar']} ({p_time})."
                     )
-                    try:
-                        bot.send_message(chat_id, msg)
+                    if _send_clean_alert(chat_id, msg):
                         sent_count += 1
-                    except Exception:
-                        pass
 
         if u.get("adhkar_alerts", 1):
             if now_hm == "07:30" and mark_alert_sent(chat_id, f"{today_str}_morning_adhkar"):
-                try:
-                    bot.send_message(chat_id, "🌅 <b>تذكير:</b> لا تنسَ قراءة أذكار الصباح لحفظ يومك وبركته.")
+                if _send_clean_alert(chat_id, "🌅 <b>تذكير:</b> لا تنسَ قراءة أذكار الصباح لحفظ يومك وبركته."):
                     sent_count += 1
-                except Exception:
-                    pass
             if now_hm == "17:30" and mark_alert_sent(chat_id, f"{today_str}_evening_adhkar"):
-                try:
-                    bot.send_message(chat_id, "🌙 <b>تذكير:</b> حان وقت أذكار المساء، ألا بذكر الله تطمئن القلوب.")
+                if _send_clean_alert(chat_id, "🌙 <b>تذكير:</b> حان وقت أذكار المساء، ألا بذكر الله تطمئن القلوب."):
                     sent_count += 1
-                except Exception:
-                    pass
 
         if u.get("kahf_alert", 1) and now.weekday() == 4 and now_hm == "10:00":
             if mark_alert_sent(chat_id, f"{today_str}_kahf"):
-                try:
-                    bot.send_message(
-                        chat_id,
-                        "🕌 <b>جمعة مباركة!</b>\nلا تنسَ قراءة <b>سورة الكهف</b> (برواية ورش عن نافع) والإكثار من الصلاة على النبي ﷺ.",
-                    )
+                if _send_clean_alert(
+                    chat_id,
+                    "🕌 <b>جمعة مباركة!</b>\nلا تنسَ قراءة <b>سورة الكهف</b> (برواية ورش عن نافع) والإكثار من الصلاة على النبي ﷺ.",
+                ):
                     sent_count += 1
-                except Exception:
-                    pass
 
     # Also send direct Phone Web Push Notifications to all website/PWA subscribers
     push_subs = get_all_webpush_subs()
