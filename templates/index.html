@@ -132,7 +132,7 @@
             <span class="text-lg">🔊</span>
             <div>
               <div class="text-xs font-bold text-amber-300">الاستماع للأذان بأصوات متعددة</div>
-              <div class="text-[10px] text-emerald-200/75">اختر المؤذن المفضل لديك وسيتم حفظ اختيارك تلقائياً</div>
+              <div class="text-[11px] text-emerald-200/80">اختر صوت المؤذن المفضل لديك</div>
             </div>
           </div>
           <button onclick="toggleAdhanAudio()" id="adhanPlayBtn" class="gold-gradient text-emerald-950 font-extrabold text-xs px-3.5 py-1.5 rounded-xl shadow">
@@ -148,7 +148,7 @@
         <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div>
             <h3 class="text-sm font-bold text-amber-300">📅 الحصة الشهرية لمواقيت الصلاة</h3>
-            <p id="monthlySubtitle" class="text-[11px] text-emerald-200/70">وزارة الأوقاف والشؤون الإسلامية — صفحة واحدة A4</p>
+            <p id="monthlySubtitle" class="text-[11px] text-emerald-200/80">وفق توقيت وزارة الأوقاف والشؤون الإسلامية</p>
           </div>
           <div class="flex items-center gap-1.5">
             <select id="monthSelect" onchange="loadMonthly()" class="bg-emerald-950/90 border border-amber-400/30 rounded-lg px-2 py-1 text-xs text-amber-200">
@@ -158,14 +158,14 @@
               <option value="10">أكتوبر</option><option value="11">نونبر</option><option value="12">دجنبر</option>
             </select>
             <button onclick="downloadMonthlyPDF()" id="printMonthlyBtn" class="gold-gradient text-emerald-950 font-extrabold px-3 py-1.5 rounded-lg text-xs shadow flex items-center gap-1">
-              <span>📄</span><span>تحميل PDF (A4)</span>
+              <span>📄</span><span>تحميل PDF</span>
             </button>
           </div>
         </div>
         <div id="printToast" class="hidden mb-2 p-2 rounded-lg bg-emerald-900/90 border border-amber-400/40 text-xs text-amber-200 text-center"></div>
         <div class="overflow-x-auto max-h-80 overflow-y-auto rounded-xl border border-emerald-800/60">
           <table class="w-full text-center text-xs">
-            <thead class="bg-emerald-950/90 text-amber-300 sticky top-0">
+            <thead class="bg-[#04241c] text-amber-300 sticky top-0 z-10 shadow">
               <tr>
                 <th class="py-2 px-1">اليوم</th>
                 <th class="py-2 px-1">الأيام</th>
@@ -567,7 +567,7 @@
         <button onclick="closeInstallModal()" class="text-emerald-200 text-lg">✕</button>
       </div>
       <p class="text-xs text-emerald-100/90 leading-relaxed">
-        تم تحويل المنصة إلى تطبيق ويب تقدمي (PWA) يعمل بملء الشاشة على هاتفك بأيقونة خاصة مثل تطبيقات المتجر:
+        ثبّت تطبيق «نور المغرب» على شاشة هاتفك الرئيسية ليعمل بملء الشاشة وبسرعة فائقة كأي تطبيق رسمي:
       </p>
       <div class="space-y-2 text-xs text-emerald-100 bg-emerald-950/80 p-3 rounded-xl border border-amber-400/25">
         <div>1️⃣ اضغط الزر أدناه لفتح التطبيق في متصفح الهاتف (Chrome أو Safari).</div>
@@ -874,7 +874,7 @@
       const m = document.getElementById('monthSelect').value;
       const y = new Date().getFullYear();
       const toast = document.getElementById('printToast');
-      toast.innerText = '⏳ جاري تجهيز ملف الحصة الشهرية PDF في صفحة واحدة A4...';
+      toast.innerText = 'جاري تجهيز ملف الحصة الشهرية...';
       toast.classList.remove('hidden');
 
       populateHiddenA4Template();
@@ -888,7 +888,7 @@
       try {
         if (tg && tg.openLink) {
           tg.openLink(pdfUrl);
-          toast.innerText = '✅ تم إرسال ملف PDF (صفحة واحدة A4) إلى محادثة البوت وفتح رابط التحميل المباشر!';
+          toast.innerText = '✓ تم إرسال الحصة الشهرية إلى البوت وفتح رابط التحميل';
         } else {
           const opt = {
             margin: [4, 4, 4, 4],
@@ -899,7 +899,7 @@
             pagebreak: { mode: ['avoid-all'] }
           };
           await html2pdf().set(opt).from(el).save();
-          toast.innerText = '✅ تم تحميل ملف PDF (صفحة واحدة A4) بنجاح!';
+          toast.innerText = '✓ تم تحميل الحصة الشهرية بنجاح';
         }
       } catch (e) {
         window.open(pdfUrl, '_blank');
