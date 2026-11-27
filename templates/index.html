@@ -11,7 +11,7 @@
   <link rel="icon" type="image/svg+xml" href="/icon.svg" />
   <link rel="apple-touch-icon" href="/icon-512.png" />
   <title>نور المغرب — مواقيت الصلاة في المغرب، الحصة الشهرية، ومصحف ورش</title>
-  <meta name="description" content="مواقيت الصلاة الرسمية في كل المدن المغربية (وزارة الأوقاف والشؤون الإسلامية)، الحصة الشهرية PDF، المصحف المحمدي برواية ورش عن نافع، بوصلة القبلة الحية، الأذكار، والسيرة النبوية." />
+  <meta name="description" content="مواقيت الصلاة الرسمية في كل المدن المغربية (وزارة الأوقاف والشؤون الإسلامية)، الحصة الشهرية PDF، المصحف برواية ورش عن نافع، بوصلة القبلة الحية، الأذكار، والسيرة النبوية." />
   <meta name="keywords" content="مواقيت الصلاة المغرب, أوقات الصلاة في المغرب, الحصة الشهرية لمواقيت الصلاة, مواقيت الصلاة وجدة الرباط الدار البيضاء فاس مراكش طنجة أكادير, المصحف برواية ورش عن نافع, بوصلة القبلة, أذكار الصباح والمساء, نور المغرب" />
   <meta name="robots" content="index, follow" />
   <link rel="canonical" href="{{ site_url }}/" />
@@ -151,21 +151,16 @@
       <div class="glass-card rounded-2xl p-4">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div>
-            <h3 class="text-sm font-bold text-amber-300">📅 الحصة الشهرية لمواقيت الصلاة</h3>
-            <p id="monthlySubtitle" class="text-[11px] text-emerald-200/80">وفق توقيت وزارة الأوقاف والشؤون الإسلامية</p>
+            <h3 class="text-sm font-bold text-amber-300">📅 الحصة الشهرية لمواقيت الصلاة — <span id="hijriMonthTitle">...</span></h3>
+            <p id="monthlySubtitle" class="text-[11px] text-emerald-200/80">المصدر: وزارة الأوقاف والشؤون الإسلامية</p>
           </div>
           <div class="flex items-center gap-1.5">
-            <select id="monthSelect" onchange="loadMonthly()" class="bg-emerald-950/90 border border-amber-400/30 rounded-lg px-2 py-1 text-xs text-amber-200">
-              <option value="1">يناير</option><option value="2">فبراير</option><option value="3">مارس</option>
-              <option value="4">أبريل</option><option value="5">ماي</option><option value="6">يونيو</option>
-              <option value="7">يوليوز</option><option value="8">غشت</option><option value="9">شتنبر</option>
-              <option value="10">أكتوبر</option><option value="11">نونبر</option><option value="12">دجنبر</option>
-            </select>
             <button onclick="downloadMonthlyPDF()" id="printMonthlyBtn" class="gold-gradient text-emerald-950 font-extrabold px-3 py-1.5 rounded-lg text-xs shadow flex items-center gap-1">
               <span>📄</span><span>تحميل PDF</span>
             </button>
           </div>
         </div>
+        <div id="sourceNotice" class="hidden mb-2 p-2 rounded-lg bg-rose-900/70 border border-rose-300/50 text-xs text-rose-50 text-center leading-relaxed"></div>
         <div id="printToast" class="hidden mb-2 p-2 rounded-lg bg-emerald-900/90 border border-amber-400/40 text-xs text-amber-200 text-center"></div>
         <div class="overflow-x-auto max-h-80 overflow-y-auto rounded-xl border border-emerald-800/60">
           <table class="w-full text-center text-xs">
@@ -188,7 +183,7 @@
       </div>
     </section>
 
-    <!-- TAB 2: INTERACTIVE MUSHAF AL-MUHAMMADI (WARSH 604 PAGES) & WARSH RADIOS -->
+    <!-- TAB 2: INTERACTIVE WARSH MUSHAF (604-PAGE LAYOUT) & WARSH RADIOS -->
     <section id="tab-quran" class="hidden space-y-4">
 
       <!-- Mode Switcher: Visual Page-Flipping Mushaf vs Surah Text & Audio -->
@@ -291,7 +286,7 @@
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h3 class="text-sm font-bold text-amber-300">📖 تلاوة ونص السور — رواية ورش عن نافع</h3>
-            <p class="text-[11px] text-emerald-200/75">النص الكامل برسم ورش مع تلاوة الشيخ عمر القزابري</p>
+            <p class="text-[11px] text-emerald-200/75">النص الكامل برواية ورش مع تلاوة الشيخ عمر القزابري — ترقيم الآيات في هذا العرض على العدّ الكوفي</p>
           </div>
           <select id="surahSelect" onchange="loadWarshSurah(this.value)" class="bg-emerald-950 border border-amber-400/40 rounded-xl px-3 py-1.5 text-xs text-amber-200 font-bold"></select>
         </div>
@@ -340,7 +335,7 @@
 
       <!-- Verification Banner -->
       <div class="glass-card rounded-2xl p-3 border border-amber-400/30 text-[11px] text-emerald-100/90 leading-relaxed">
-        ✅ <b class="text-amber-300">توثيق علمي مدقق:</b> جميع الفصول والقصص معتمدة حصراً على <b>القرآن الكريم (برواية ورش)</b> و<b>الصحيحين (البخاري ومسلم)</b> ومؤلفات أئمة الإسلام المعتمدين (<b>سيرة ابن هشام</b>، <b>زاد المعاد لابن القيم</b>، <b>الفصول في سيرة الرسول وقصص الأنبياء للحافظ ابن كثير</b>، و<b>تفسير السعدي</b>)، وهي منقّاة تماماً من الإسرائيليات والروايات الضعيفة أو الموضوعة.
+        ✅ <b class="text-amber-300">توثيق علمي:</b> الفصول والقصص معتمدة على <b>القرآن الكريم (برواية ورش)</b> و<b>الصحيحين (البخاري ومسلم)</b> ومؤلفات أئمة الإسلام المعتمدين (<b>سيرة ابن هشام</b>، <b>زاد المعاد لابن القيم</b>، <b>الفصول في سيرة الرسول وقصص الأنبياء للحافظ ابن كثير</b>، و<b>تفسير السعدي</b>)، مع تجنّب الإسرائيليات والروايات الموضوعة، والتنبيه على ما انفردت به كتب السيرة أو اختلف فيه العلماء.
       </div>
 
       <!-- Seerah Chapters Container -->
@@ -542,7 +537,7 @@
     <div id="pdfSinglePageA4" dir="rtl" style="width:190mm; background:#ffffff; color:#04241c; font-family:'Cairo',sans-serif; padding:4mm; box-sizing:border-box;">
       <div style="border:2px solid #04241c; border-radius:8px; padding:6px 10px; text-align:center; background:#f4f8f6; margin-bottom:6px;">
         <div id="pdfHeaderTitle" style="font-size:15px; font-weight:800; color:#04241c;">🕌 الحصة الشهرية لمواقيت الصلاة — مدينة وجدة</div>
-        <div id="pdfHeaderSub" style="font-size:10px; font-weight:600; color:#334155; margin-top:2px;">وفق توقيت وزارة الأوقاف والشؤون الإسلامية بالمغرب — رواية ورش عن نافع</div>
+        <div id="pdfHeaderSub" style="font-size:10px; font-weight:600; color:#334155; margin-top:2px;">المصدر: الحصة الرسمية لوزارة الأوقاف والشؤون الإسلامية بالمغرب</div>
       </div>
       <table style="width:100%; border-collapse:collapse; font-size:9.2px; text-align:center;">
         <thead>
@@ -576,7 +571,7 @@
         <p id="adhanCallSub" class="text-xs text-emerald-100/90 mt-1">اللهم رب هذه الدعوة التامة والصلاة القائمة...</p>
       </div>
       <div class="grid grid-cols-2 gap-2 pt-1">
-        <button onclick="playSelectedAdhanNow()" class="py-2.5 rounded-xl gold-gradient text-emerald-950 font-extrabold text-xs shadow">
+        <button onclick="playSelectedAdhanNow(currentAdhanPrayerKey)" class="py-2.5 rounded-xl gold-gradient text-emerald-950 font-extrabold text-xs shadow">
           🔊 تشغيل الأذان
         </button>
         <button onclick="stopAndCloseAdhanModal()" class="py-2.5 rounded-xl bg-emerald-950 text-rose-200 font-bold text-xs border border-rose-400/40">
@@ -710,7 +705,12 @@
     let allCities = [];
     let contentData = {};
     let todayTimings = {};
+    let tomorrowTimings = {};
+    let todayISO = '';
     let currentMonthlyDays = [];
+    let currentMonthTitle = '';
+    let currentSourceApprox = false;
+    let fajrAdhanUrl = '';
     let botShareUrl = "{{ bot_share_url }}" || window.location.origin;
     let tasbihCount = parseInt(localStorage.getItem('noor_tasbih') || '0', 10);
 
@@ -729,7 +729,6 @@
 
     async function initApp() {
       document.getElementById('tasbihCounter').innerText = tasbihCount;
-      document.getElementById('monthSelect').value = new Date().getMonth() + 1;
 
       const [citiesRes, contentRes] = await Promise.all([
         fetch('/api/cities').then(r => r.json()),
@@ -739,8 +738,13 @@
       contentData = contentRes;
 
       // Populate multi-voice Adhan selector
-      const voices = contentData.adhan_voices || [];
-      const savedVoice = localStorage.getItem('noor_adhan_voice') || (voices[0]?.url || '');
+      // The Fajr recording contains «الصلاة خير من النوم» (التثويب): it is played automatically at Fajr only,
+      // and never offered for the other prayers.
+      const allVoices = contentData.adhan_voices || [];
+      fajrAdhanUrl = (allVoices.find(v => v.fajr_only) || {}).url || '';
+      const voices = allVoices.filter(v => !v.fajr_only);
+      let savedVoice = localStorage.getItem('noor_adhan_voice') || '';
+      if (!voices.some(v => v.url === savedVoice)) savedVoice = voices[0]?.url || '';
       const vSelect = document.getElementById('adhanVoiceSelect');
       vSelect.innerHTML = voices.map(v =>
         `<option value="${v.url}" ${v.url === savedVoice ? 'selected' : ''}>🎙 ${v.name}</option>`
@@ -799,7 +803,7 @@
       if (urlParams.get('tab')) switchTab(urlParams.get('tab'));
       if (urlParams.get('play_adhan') === '1') {
         const pKey = urlParams.get('prayer') || '';
-        triggerLiveAdhanCall(PRAYER_AR_MAP[pKey] || 'الصلاة');
+        triggerLiveAdhanCall(PRAYER_AR_MAP[pKey] || 'الصلاة', pKey);
       }
     }
 
@@ -861,10 +865,32 @@
       document.getElementById('currentCityName').innerText = data.city.ar;
       updateQiblaFromCoords(data.city.lat, data.city.lon, `مدينة ${data.city.ar}`);
 
-      if (data.today) {
+      todayISO = data.today_iso || '';
+      tomorrowTimings = (data.tomorrow && data.tomorrow.timings) || {};
+      currentMonthTitle = data.month_title || '';
+      const src = data.source || {};
+      currentSourceApprox = !!src.approx;
+      document.getElementById('hijriMonthTitle').innerText = currentMonthTitle;
+      const sub = document.getElementById('monthlySubtitle');
+      if (src.approx) {
+        sub.innerText = 'حساب فلكي تقريبي';
+      } else {
+        sub.innerHTML = `المصدر: الحصة الرسمية لوزارة الأوقاف والشؤون الإسلامية${src.habous_city ? ' (' + src.habous_city + ')' : ''}` +
+          (src.url ? ` — <a href="${src.url}" target="_blank" rel="noopener" class="underline text-amber-300">الجدول الرسمي</a>` : '');
+      }
+      const notice = document.getElementById('sourceNotice');
+      if (src.approx) {
+        notice.innerText = `⚠️ ${src.reason || 'تعذّر الوصول إلى موقع وزارة الأوقاف'}؛ المواقيت والتاريخ الهجري المعروضة تقريبية، يُرجى اعتماد الجدول الرسمي لوزارة الأوقاف.`;
+        notice.classList.remove('hidden');
+      } else {
+        notice.classList.add('hidden');
+      }
+
+      if (data.today && data.today.timings) {
         todayTimings = data.today.timings;
         document.getElementById('headerHijri').innerText =
-          `${data.today.weekday_ar} ${data.today.hijri_day} ${data.today.hijri_month} ${data.today.hijri_year} هـ`;
+          `${data.today.weekday_ar} ${data.today.hijri_day} ${data.today.hijri_month} ${data.today.hijri_year} هـ` +
+          (data.today.approx ? ' (تقريبي)' : '');
         renderTodayGrid(data.today.timings);
         updateCountdown();
       }
@@ -872,24 +898,16 @@
       renderMonthlyTable(currentMonthlyDays);
     }
 
-    async function loadMonthly() {
-      const m = document.getElementById('monthSelect').value;
-      const y = new Date().getFullYear();
-      const data = await fetch(`/api/monthly?city=${currentCity}&year=${y}&month=${m}`).then(r => r.json());
-      currentMonthlyDays = data.days || [];
-      renderMonthlyTable(currentMonthlyDays);
-    }
-
     function populateHiddenA4Template() {
-      const mSelect = document.getElementById('monthSelect');
-      const mName = mSelect.options[mSelect.selectedIndex].text;
-      const y = new Date().getFullYear();
       document.getElementById('pdfHeaderTitle').innerText =
-        `🕌 الحصة الشهرية لمواقيت الصلاة — مدينة ${currentCityObj.ar} (${currentCityObj.region}) — ${mName} ${y}`;
+        `🕌 الحصة الشهرية لمواقيت الصلاة — مدينة ${currentCityObj.ar} (${currentCityObj.region}) — ${currentMonthTitle}`;
+      document.getElementById('pdfHeaderSub').innerText = currentSourceApprox
+        ? '⚠️ توقيت تقريبي — يُرجى اعتماد الجدول الرسمي لوزارة الأوقاف والشؤون الإسلامية'
+        : 'المصدر: الحصة الرسمية لوزارة الأوقاف والشؤون الإسلامية بالمغرب';
       document.getElementById('pdfTableRows').innerHTML = currentMonthlyDays.map((d, idx) => `
         <tr style="background:${idx % 2 === 0 ? '#ffffff' : '#f1f5f9'};">
           <td style="padding:2.2px; border:1px solid #cbd5e1; font-weight:700;">${d.weekday_ar}</td>
-          <td style="padding:2.2px; border:1px solid #cbd5e1;">${d.day} ${mName}</td>
+          <td style="padding:2.2px; border:1px solid #cbd5e1;">${d.greg_label || d.day}</td>
           <td style="padding:2.2px; border:1px solid #cbd5e1;">${d.hijri_day} ${d.hijri_month}</td>
           <td style="padding:2.2px; border:1px solid #cbd5e1; font-family:monospace;">${d.timings.Fajr}</td>
           <td style="padding:2.2px; border:1px solid #cbd5e1; font-family:monospace;">${d.timings.Sunrise}</td>
@@ -902,20 +920,21 @@
     }
 
     async function downloadMonthlyPDF() {
-      const m = document.getElementById('monthSelect').value;
-      const y = new Date().getFullYear();
+      const d0 = currentMonthlyDays[0] || {};
       const toast = document.getElementById('printToast');
       toast.innerText = 'جاري تجهيز ملف الحصة الشهرية...';
       toast.classList.remove('hidden');
 
       populateHiddenA4Template();
       const el = document.getElementById('pdfSinglePageA4');
-      const filename = `Imsakiya_${currentCityObj.en}_${y}_${String(m).padStart(2, '0')}_A4.pdf`;
+      const filename = currentSourceApprox
+        ? `Imsakiya_${currentCityObj.en}_${(d0.date_iso || '').slice(0, 7)}_approx_A4.pdf`
+        : `Imsakiya_${currentCityObj.en}_${d0.hijri_year || ''}-${String(d0.hijri_month_num || '').padStart(2, '0')}_A4.pdf`;
 
       if (chatId) {
-        fetch(`/print-monthly?city=${currentCity}&year=${y}&month=${m}&chat_id=${chatId}&send_tg=1`).catch(() => {});
+        fetch(`/print-monthly?city=${currentCity}&chat_id=${chatId}&send_tg=1`).catch(() => {});
       }
-      const pdfUrl = `${window.location.origin}/print-monthly?city=${currentCity}&year=${y}&month=${m}&format=pdf`;
+      const pdfUrl = `${window.location.origin}/print-monthly?city=${currentCity}&format=pdf`;
       try {
         if (tg && tg.openLink) {
           tg.openLink(pdfUrl);
@@ -947,7 +966,7 @@
       const info = hmap[String(selectedHizb)] || { surah: 1, label: 'الفاتحة / البقرة' };
       const isDone = completedAhzab.includes(selectedHizb);
       document.getElementById('selectedHizbTitle').innerText =
-        `الحزب ${selectedHizb} — سورة ${info.label} ${isDone ? '(مكتمل ✓)' : ''}`;
+        `الحزب ${selectedHizb} — ${info.label} ${isDone ? '(مكتمل ✓)' : ''}`;
       const hpEl = document.getElementById('selectedHizbPage');
       if (hpEl) hpEl.innerText = `يبدأ من الصفحة ${startPageForHizb(selectedHizb)} في المصحف`;
       document.getElementById('toggleHizbBtn').innerText = isDone ? '↩️ إلغاء الإتمام' : '✅ إتمام الحزب';
@@ -1010,17 +1029,12 @@
     }
 
     function renderMonthlyTable(days) {
-      const todayNum = new Date().getDate();
-      const selMonth = parseInt(document.getElementById('monthSelect').value, 10);
-      const isCurMonth = selMonth === (new Date().getMonth() + 1);
       document.getElementById('monthlyTableBody').innerHTML = days.map(d => {
-        const isToday = isCurMonth && d.day === todayNum;
-        const mSelect = document.getElementById('monthSelect');
-        const mLabel = mSelect ? mSelect.options[mSelect.selectedIndex].text : '';
+        const isToday = !!todayISO && d.date_iso === todayISO;
         return `
           <tr class="${isToday ? 'bg-amber-500/20 font-bold text-amber-200' : 'hover:bg-emerald-900/30'}">
             <td class="py-1.5 px-1.5 text-amber-200 font-semibold whitespace-nowrap">${d.weekday_ar || ''}</td>
-            <td class="py-1.5 px-1 text-white whitespace-nowrap">${d.day} ${mLabel}</td>
+            <td class="py-1.5 px-1 text-white whitespace-nowrap">${d.greg_label || d.day}</td>
             <td class="py-1.5 px-1 text-emerald-200/85 whitespace-nowrap">${d.hijri_day} ${d.hijri_month}</td>
             <td class="py-1.5 px-1 font-mono">${d.timings.Fajr}</td>
             <td class="py-1.5 px-1 font-mono text-amber-200/90">${d.timings.Sunrise}</td>
@@ -1037,20 +1051,27 @@
     let lastAutoAdhanKey = '';
     const PRAYER_AR_MAP = { Fajr: 'الفجر', Dhuhr: 'الظهر', Asr: 'العصر', Maghrib: 'المغرب', Isha: 'العشاء' };
 
-    function triggerLiveAdhanCall(prayerAr) {
+    let currentAdhanPrayerKey = '';
+
+    function triggerLiveAdhanCall(prayerAr, prayerKey) {
+      currentAdhanPrayerKey = prayerKey || '';
       document.getElementById('adhanCallTitle').innerText = `حان الآن موعد أذان ${prayerAr}`;
-      document.getElementById('adhanCallSub').innerText = `بتوقيت مدينة ${currentCityObj.ar} — بصوت مؤذنك المختار`;
+      document.getElementById('adhanCallSub').innerText = `بتوقيت مدينة ${currentCityObj.ar}` +
+        (currentSourceApprox ? ' — ⚠️ توقيت تقريبي' : ' — وفق الحصة الرسمية لوزارة الأوقاف');
       const modal = document.getElementById('adhanCallModal');
       modal.classList.remove('hidden');
       modal.classList.add('flex');
-      playSelectedAdhanNow();
+      playSelectedAdhanNow(currentAdhanPrayerKey);
     }
 
-    function playSelectedAdhanNow() {
+    function playSelectedAdhanNow(prayerKey) {
       const audio = document.getElementById('adhanAudioEl');
       const btn = document.getElementById('adhanPlayBtn');
       const sel = document.getElementById('adhanVoiceSelect');
-      if (sel && sel.value && audio.src !== sel.value) audio.src = sel.value;
+      const key = prayerKey || currentAdhanPrayerKey;
+      // أذان الفجر فيه «الصلاة خير من النوم»؛ وبقية الصلوات بأذان بلا تثويب.
+      const url = (key === 'Fajr' && fajrAdhanUrl) ? fajrAdhanUrl : (sel && sel.value);
+      if (url && audio.src !== url) audio.src = url;
       audio.currentTime = 0;
       audio.play().then(() => {
         if (btn) btn.innerText = '⏹ إيقاف';
@@ -1068,9 +1089,20 @@
       modal.classList.remove('flex');
     }
 
+    function localISODate(d) {
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+    let reloadingDay = false;
+
     function updateCountdown() {
       if (!todayTimings.Fajr) return;
       const now = new Date();
+      // A new day started while the app is open: load the new day's official times and Hijri date.
+      if (todayISO && localISODate(now) > todayISO && !reloadingDay) {
+        reloadingDay = true;
+        loadCityData(currentCity).finally(() => { reloadingDay = false; });
+        return;
+      }
       let next = null;
       for (const p of PRAYER_LABELS) {
         const t = todayTimings[p.key];
@@ -1081,11 +1113,12 @@
         if (dt > now) { next = { ...p, time: t, dt }; break; }
       }
       if (!next) {
-        const [hh, mm] = todayTimings.Fajr.split(':').map(Number);
+        const fajrTomorrow = tomorrowTimings.Fajr || todayTimings.Fajr;
+        const [hh, mm] = fajrTomorrow.split(':').map(Number);
         const dt = new Date(now);
         dt.setDate(dt.getDate() + 1);
         dt.setHours(hh, mm, 0, 0);
-        next = { ...PRAYER_LABELS[0], time: todayTimings.Fajr, dt };
+        next = { ...PRAYER_LABELS[0], time: fajrTomorrow, dt };
       }
       const diff = Math.max(0, Math.floor((next.dt - now) / 1000));
       const h = String(Math.floor(diff / 3600)).padStart(2, '0');
@@ -1104,7 +1137,7 @@
             const k = `${todayKeyPrefix}_${pKey}`;
             if (lastAutoAdhanKey !== k) {
               lastAutoAdhanKey = k;
-              triggerLiveAdhanCall(PRAYER_AR_MAP[pKey]);
+              triggerLiveAdhanCall(PRAYER_AR_MAP[pKey], pKey);
             }
           }
         }
@@ -1507,11 +1540,17 @@
     let mushafBookmarks = JSON.parse(localStorage.getItem('noor_mushaf_bookmarks') || '[]');
     let mushafNightMode = localStorage.getItem('noor_mushaf_night') === '1';
 
-    function hizbForPage(p) {
-      return Math.min(60, Math.max(1, Math.floor(((p - 1) * 60) / 604) + 1));
-    }
     function startPageForHizb(h) {
+      const info = (contentData.hizb_map || {})[String(h)];
+      if (info && info.page) return info.page;
       return Math.min(604, Math.max(1, Math.floor(((h - 1) * 604) / 60) + 1));
+    }
+    function hizbForPage(p) {
+      let hz = 1;
+      for (let h = 1; h <= 60; h++) {
+        if (startPageForHizb(h) <= p) hz = h; else break;
+      }
+      return hz;
     }
 
     function initInteractiveMushaf() {
@@ -1585,7 +1624,9 @@
         spinner.classList.add('hidden');
         imgEl.style.opacity = '1';
       };
+      const altSrc = `https://files.quran.app/warsh/original/width_1024/page${padded}.png`;
       imgEl.onerror = () => {
+        if (imgEl.src !== altSrc) { imgEl.src = altSrc; return; }
         spinner.classList.add('hidden');
         imgEl.style.opacity = '1';
       };
@@ -1654,7 +1695,7 @@
 
     function updateMushafStatsUI() {
       const pagesCount = readPagesSet.size;
-      const ahzabFloat = ((pagesCount / 604) * 60).toFixed(1);
+      const ahzabFloat = String(completedAhzab.length);
       const pct = Math.min(100, Math.round((pagesCount / 604) * 100));
       const elP = document.getElementById('statPagesRead');
       const elA = document.getElementById('statAhzabRead');

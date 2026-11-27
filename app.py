@@ -2,7 +2,9 @@
 """
 Noor Al-Maghrib (نور المغرب) - Islamic Telegram Bot & Mini App (Moroccan Warsh Edition)
 24/7 Production Server for Render.com (Flask + pyTelegramBotAPI + SQLite + Scheduler)
-Official Moroccan Prayer Times via AlAdhan API (Method 21: Ministry of Habous & Islamic Affairs)
+Official Moroccan Prayer Times AND Hijri dates taken directly from the Ministry of Habous and
+Islamic Affairs (habous.gov.ma/prieres) — see habous_service.py. AlAdhan (method 21) is used only
+as a clearly-labelled approximate fallback when the Ministry's site cannot be reached.
 Full Quran Text & Audio in Riwayat Warsh A'n Nafi' (رواية ورش عن نافع).
 """
 
@@ -35,6 +37,13 @@ from islamic_content import (
     HIZB_SURAH_MAP,
     SEERAH_DATA,
     PROPHETS_STORIES_DATA,
+)
+from habous_service import (
+    get_month_table as habous_month_table,
+    match_habous_id,
+    configure_cache as configure_habous_cache,
+    GREG_MONTHS_MA,
+    WEEKDAYS_AR,
 )
 
 logging.basicConfig(
@@ -150,6 +159,18 @@ def _redis_cmd(*args):
     except Exception as e:
         logger.error("Redis REST error (%s): %s", args[0] if args else "", e)
         return None
+
+
+def _habous_cache_get(key):
+    return _redis_cmd("GET", key) if USE_REDIS else None
+
+
+def _habous_cache_set(key, value, ttl):
+    if USE_REDIS:
+        _redis_cmd("SET", key, value, "EX", str(int(ttl)))
+
+
+configure_habous_cache(_habous_cache_get, _habous_cache_set)
 
 
 def init_db():
@@ -430,7 +451,14 @@ def clean_time(t_str: str) -> str:
     return t_str.split(" ")[0].strip() if t_str else "--:--"
 
 
-def fetch_monthly_times(city_id: str, year: int, month: int) -> list:
+# AlAdhan "Morocco" method (Fajr 19°, Isha 17°) does not include the precaution minutes the Ministry
+# adds to its tables; observed differences: Sunrise −3, Dhuhr +5, Maghrib +4 minutes. These offsets make
+# the FALLBACK closer to the official table, but the result is still labelled "تقريبي" everywhere.
+ALADHAN_TUNE = "0,0,-3,5,0,4,0,0,0"  # Imsak,Fajr,Sunrise,Dhuhr,Asr,Maghrib,Sunset,Isha,Midnight
+
+
+def fetch_aladhan_month(city_id: str, year: int, month: int) -> list:
+    """Approximate fallback only (used when habous.gov.ma cannot be reached)."""
     city = CITY_BY_ID.get(city_id) or CITY_BY_ID["oujda"]
     key = (city["id"], year, month)
     with CACHE_LOCK:
@@ -441,7 +469,8 @@ def fetch_monthly_times(city_id: str, year: int, month: int) -> list:
     params = {
         "latitude": city["lat"],
         "longitude": city["lon"],
-        "method": 21,  # Morocco - Ministry of Habous and Islamic Affairs
+        "method": 21,  # Morocco
+        "tune": ALADHAN_TUNE,
         "timezonestring": "Africa/Casablanca",
     }
     try:
@@ -455,18 +484,23 @@ def fetch_monthly_times(city_id: str, year: int, month: int) -> list:
             date_info = item.get("date", {})
             greg = date_info.get("gregorian", {})
             hijri = date_info.get("hijri", {})
-            en_wday = greg.get("weekday", {}).get("en", "")
             h_mnum = int(hijri.get("month", {}).get("number", 0) or 0)
-            clean_wday = WEEKDAYS_AR_CLEAN.get(en_wday) or hijri.get("weekday", {}).get("ar", "")
-            clean_hmonth = HIJRI_MONTHS_MA.get(h_mnum) or hijri.get("month", {}).get("ar", "")
+            try:
+                g_date = datetime.strptime(greg.get("date", ""), "%d-%m-%Y").date()
+            except ValueError:
+                continue
             parsed.append(
                 {
-                    "day": int(greg.get("day", 1)),
+                    "day": g_date.day,
+                    "date_iso": g_date.isoformat(),
                     "gregorian": greg.get("date", ""),
-                    "weekday_ar": clean_wday,
+                    "greg_label": f"{g_date.day} {GREG_MONTHS_MA[g_date.month]}",
+                    "weekday_ar": WEEKDAYS_AR[g_date.weekday()],
                     "hijri_day": hijri.get("day", ""),
-                    "hijri_month": clean_hmonth,
+                    "hijri_month": HIJRI_MONTHS_MA.get(h_mnum) or hijri.get("month", {}).get("ar", ""),
+                    "hijri_month_num": h_mnum,
                     "hijri_year": hijri.get("year", ""),
+                    "approx": True,
                     "timings": {
                         "Fajr": clean_time(timings.get("Fajr", "")),
                         "Sunrise": clean_time(timings.get("Sunrise", "")),
@@ -484,6 +518,52 @@ def fetch_monthly_times(city_id: str, year: int, month: int) -> list:
     except Exception as e:
         logger.error("Failed to fetch AlAdhan monthly calendar for %s: %s", city_id, e)
         return []
+
+
+def get_city_month(city_id: str) -> dict:
+    """Current month timetable for a city.
+
+    Official source: the Ministry's table of the CURRENT Hijri month (habous.gov.ma), exactly as published
+    («الحصة الشهرية»). Fallback (approximate): AlAdhan for the current Gregorian month.
+    """
+    city = CITY_BY_ID.get(city_id) or CITY_BY_ID["oujda"]
+    today = datetime.now(MOROCCO_TZ).date()
+    hid = match_habous_id(city)
+    table = habous_month_table(hid, today) if hid else None
+    if table and table.get("days"):
+        return {
+            "days": [dict(d, approx=False) for d in table["days"]],
+            "title": table["title"],
+            "source": {
+                "name": "habous",
+                "label": "وزارة الأوقاف والشؤون الإسلامية",
+                "approx": False,
+                "url": table.get("source_url", ""),
+                "habous_city": table.get("city_ar", ""),
+                "stale": bool(table.get("stale")),
+                "fetched_at": table.get("fetched_at"),
+            },
+        }
+    days = fetch_aladhan_month(city["id"], today.year, today.month)
+    reason = "المدينة غير موجودة في لائحة مدن الوزارة" if not hid else "تعذّر الوصول إلى موقع وزارة الأوقاف"
+    return {
+        "days": days,
+        "title": f"شهر {GREG_MONTHS_MA[today.month]} {today.year} م (تقريبي)",
+        "source": {"name": "aladhan", "label": "حساب فلكي تقريبي", "approx": True, "reason": reason, "url": ""},
+    }
+
+
+def get_day_row(city_id: str, day=None, month: dict = None) -> dict:
+    """Timetable row for one date: from the Ministry's table when it covers that date, else approximate."""
+    day = day or datetime.now(MOROCCO_TZ).date()
+    month = month or get_city_month(city_id)
+    iso = day.isoformat()
+    row = next((d for d in month["days"] if d.get("date_iso") == iso), None)
+    if row:
+        return row
+    city = CITY_BY_ID.get(city_id) or CITY_BY_ID["oujda"]
+    days = fetch_aladhan_month(city["id"], day.year, day.month)
+    return next((d for d in days if d.get("date_iso") == iso), {})
 
 
 def fetch_warsh_surah(surah_num: int) -> dict:
@@ -526,12 +606,7 @@ def fetch_warsh_surah(surah_num: int) -> dict:
 
 
 def get_today_times(city_id: str) -> dict:
-    now = datetime.now(MOROCCO_TZ)
-    days = fetch_monthly_times(city_id, now.year, now.month)
-    for d in days:
-        if d["day"] == now.day:
-            return d
-    return days[0] if days else {}
+    return get_day_row(city_id)
 
 
 def get_next_prayer(timings: dict, now: datetime) -> tuple:
@@ -626,6 +701,15 @@ def main_menu_markup(chat_id: int = None):
     return kb
 
 
+APPROX_NOTE = "⚠️ توقيت تقريبي: تعذّر الوصول إلى موقع وزارة الأوقاف، يُرجى التحقق من الجدول الرسمي."
+
+
+def source_line(row: dict) -> str:
+    if row.get("approx"):
+        return f"<i>{APPROX_NOTE}</i>"
+    return "<i>المصدر: الحصة الرسمية لوزارة الأوقاف والشؤون الإسلامية بالمغرب</i>"
+
+
 def format_today_message(user: dict) -> str:
     city = CITY_BY_ID.get(user["city_id"], CITY_BY_ID["oujda"])
     now = datetime.now(MOROCCO_TZ)
@@ -636,11 +720,13 @@ def format_today_message(user: dict) -> str:
     t = day_data["timings"]
     _, next_ar, next_t, rem_str = get_next_prayer(t, now)
     hijri_str = f"{day_data['weekday_ar']} {day_data['hijri_day']} {day_data['hijri_month']} {day_data['hijri_year']} هـ"
+    if day_data.get("approx"):
+        hijri_str += " (تقريبي)"
 
     return (
         f"🕌 <b>مواقيت الصلاة — مدينة {city['ar']}</b>\n"
         f"📆 {hijri_str}\n"
-        f"🗓 {day_data['gregorian']}\n"
+        f"🗓 {day_data.get('greg_label', '')} {now.year}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"🌌 <b>الفجر:</b>      <code>{t['Fajr']}</code>\n"
         f"🌅 <b>الشروق:</b>    <code>{t['Sunrise']}</code>\n"
@@ -650,42 +736,42 @@ def format_today_message(user: dict) -> str:
         f"🌙 <b>العشاء:</b>    <code>{t['Isha']}</code>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"⏳ <b>الصلاة القادمة:</b> {next_ar} ({next_t}) — متبقي <b>{rem_str}</b>\n"
-        f"<i>وفق توقيت وزارة الأوقاف والشؤون الإسلامية بالمغرب</i>"
+        f"{source_line(day_data)}"
     )
 
 
 def format_month_chunk(city_id: str, chunk_idx: int) -> tuple:
     now = datetime.now(MOROCCO_TZ)
     city = CITY_BY_ID.get(city_id, CITY_BY_ID["oujda"])
-    days = fetch_monthly_times(city_id, now.year, now.month)
+    month = get_city_month(city_id)
+    days = month["days"]
     if not days:
         return ("⚠️ تعذر تحميل الحصة الشهرية.", None)
 
-    ranges = [(1, 10), (11, 20), (21, 31)]
     chunk_idx = max(1, min(3, chunk_idx))
-    start_d, end_d = ranges[chunk_idx - 1]
-    subset = [d for d in days if start_d <= d["day"] <= end_d]
+    subset = days[(chunk_idx - 1) * 10: chunk_idx * 10 if chunk_idx < 3 else len(days)]
+    today_iso = now.date().isoformat()
 
     lines = [
         f"📅 <b>الحصة الشهرية لمواقيت الصلاة — {city['ar']}</b>",
-        f"🗓 شهر {now.month:02d}/{now.year} (الأيام {start_d} - {min(end_d, len(days))})",
-        "<code>يوم والتاريخ | فجر  | شروق | ظهر  | عصر  | مغرب | عشاء</code>",
+        f"🗓 {month['title']} (الأيام {(chunk_idx - 1) * 10 + 1} - {(chunk_idx - 1) * 10 + len(subset)})",
+        "<code>اليوم والتاريخ | فجر  | شروق | ظهر  | عصر  | مغرب | عشاء</code>",
         "<code>─────────────┼──────┼──────┼──────┼──────┼──────┼─────</code>",
     ]
     for d in subset:
         t = d["timings"]
-        mark = "◀" if d["day"] == now.day else ""
-        wday = (d.get("weekday_ar") or "")[:7]
+        mark = " ◀" if d.get("date_iso") == today_iso else ""
         lines.append(
-            f"<b>{d['day']:02d} {wday}{mark}</b>\n"
+            f"<b>{d['hijri_day']} {d['hijri_month']} — {d.get('weekday_ar', '')} {d.get('greg_label', '')}{mark}</b>\n"
             f"<code>{t['Fajr']} |{t['Sunrise']} |{t['Dhuhr']} |{t['Asr']} |{t['Maghrib']} |{t['Isha']}</code>"
         )
+    lines.append(source_line({"approx": month["source"]["approx"]}))
 
     kb = types.InlineKeyboardMarkup(row_width=3)
     kb.add(
         types.InlineKeyboardButton("1 - 10", callback_data="month_1"),
         types.InlineKeyboardButton("11 - 20", callback_data="month_2"),
-        types.InlineKeyboardButton("21 - 31", callback_data="month_3"),
+        types.InlineKeyboardButton("21 - 30", callback_data="month_3"),
     )
     kb.add(
         types.InlineKeyboardButton("📥 إرسال جدول الشهر للطباعة", callback_data="send_print_month"),
@@ -842,13 +928,20 @@ def shape_ar(text: str) -> str:
     return "".join(out_parts)
 
 
-def generate_single_page_a4_pdf(city_id: str, year: int, month: int) -> bytes:
-    """Render a crisp 1-page A4 Portrait PDF (1240x1754 px @ 150 DPI) of the monthly timetable."""
+def pdf_filename(city: dict, month: dict) -> str:
+    d0 = (month.get("days") or [{}])[0]
+    if month["source"]["approx"]:
+        return f"Imsakiya_{city['en']}_{d0.get('date_iso', '')[:7]}_approx_A4.pdf"
+    return f"Imsakiya_{city['en']}_{d0.get('hijri_year', '')}-{int(d0.get('hijri_month_num') or 0):02d}_A4.pdf"
+
+
+def generate_single_page_a4_pdf(city_id: str) -> bytes:
+    """Render a crisp 1-page A4 Portrait PDF (1240x1754 px @ 150 DPI) of the current month's timetable."""
     from PIL import Image, ImageDraw, ImageFont
 
     city = CITY_BY_ID.get(city_id, CITY_BY_ID["oujda"])
-    days = fetch_monthly_times(city_id, year, month)
-    m_name = MONTH_NAMES_AR.get(month, str(month))
+    month = get_city_month(city_id)
+    days = month["days"]
 
     W, H = 1240, 1754
     img = Image.new("RGB", (W, H), (255, 255, 255))
@@ -883,8 +976,9 @@ def generate_single_page_a4_pdf(city_id: str, year: int, month: int) -> bytes:
     # Header Box
     draw.rounded_rectangle([40, 30, W - 40, 135], radius=14, fill=(4, 36, 28), outline=(212, 175, 55), width=3)
     draw.text((W // 2, 62), shape_ar(f"الحصة الشهرية لمواقيت الصلاة — مدينة {city['ar']} ({city['region']})"), fill=(243, 220, 138), font=f_title, anchor="mm")
-    hijri_span = f"{days[0]['hijri_month']} {days[0]['hijri_year']} هـ" if days else ""
-    draw.text((W // 2, 105), shape_ar(f"شهر {m_name} {year} م  |  {hijri_span} — وزارة الأوقاف والشؤون الإسلامية بالمغرب"), fill=(230, 245, 238), font=f_sub, anchor="mm")
+    sub = (f"{month['title']} — المصدر: وزارة الأوقاف والشؤون الإسلامية بالمغرب" if not month["source"]["approx"]
+           else f"{month['title']} — توقيت تقريبي، يرجى اعتماد الجدول الرسمي لوزارة الأوقاف")
+    draw.text((W // 2, 105), shape_ar(sub), fill=(230, 245, 238), font=f_sub, anchor="mm")
 
     # Table Columns (Right-to-Left: اسم اليوم -> الميلادي -> الهجري -> الصلوات)
     col_Bounds = [
@@ -915,7 +1009,7 @@ def generate_single_page_a4_pdf(city_id: str, year: int, month: int) -> bytes:
         t = d["timings"]
         vals = [
             shape_ar(str(d["weekday_ar"])),
-            shape_ar(f"{d['day']} {m_name}"),
+            shape_ar(str(d.get("greg_label", d["day"]))),
             shape_ar(f"{d['hijri_day']} {d['hijri_month']}"),
             t["Fajr"],
             t["Sunrise"],
@@ -937,13 +1031,14 @@ def generate_single_page_a4_pdf(city_id: str, year: int, month: int) -> bytes:
     return out.getvalue()
 
 
-def build_printable_monthly_html(city_id: str, year: int, month: int) -> str:
+def build_printable_monthly_html(city_id: str) -> str:
     city = CITY_BY_ID.get(city_id, CITY_BY_ID["oujda"])
-    days = fetch_monthly_times(city_id, year, month)
-    m_name = MONTH_NAMES_AR.get(month, str(month))
-    hijri_title = ""
-    if days:
-        hijri_title = f"{days[0]['hijri_month']} {days[0]['hijri_year']} هـ"
+    month = get_city_month(city_id)
+    days = month["days"]
+    hijri_title = month["title"]
+    source_txt = ("المصدر: الحصة الرسمية لوزارة الأوقاف والشؤون الإسلامية بالمغرب" if not month["source"]["approx"]
+                  else "⚠️ توقيت تقريبي — تعذّر الوصول إلى موقع وزارة الأوقاف، يرجى اعتماد الجدول الرسمي")
+    pdf_name = pdf_filename(city, month)
 
     rows_html = []
     for d in days:
@@ -951,7 +1046,7 @@ def build_printable_monthly_html(city_id: str, year: int, month: int) -> str:
         rows_html.append(
             f"<tr>"
             f"<td><b>{d['weekday_ar']}</b></td>"
-            f"<td>{d['day']} {m_name}</td>"
+            f"<td>{d.get('greg_label', d['day'])}</td>"
             f"<td>{d['hijri_day']} {d['hijri_month']}</td>"
             f"<td>{t['Fajr']}</td>"
             f"<td>{t['Sunrise']}</td>"
@@ -966,7 +1061,7 @@ def build_printable_monthly_html(city_id: str, year: int, month: int) -> str:
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<title>الحصة الشهرية لمواقيت الصلاة - {city['ar']} - {m_name} {year}</title>
+<title>الحصة الشهرية لمواقيت الصلاة - {city['ar']} - {hijri_title}</title>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <style>
@@ -993,7 +1088,7 @@ def build_printable_monthly_html(city_id: str, year: int, month: int) -> str:
   <div id="a4PageContainer" style="width:190mm;margin:0 auto;background:#fff;padding:2mm;">
   <div class="header">
     <h1>🕌 الحصة الشهرية لمواقيت الصلاة — مدينة {city['ar']} ({city['region']})</h1>
-    <p>شهر {m_name} {year} م  |  {hijri_title} — وفق توقيت وزارة الأوقاف والشؤون الإسلامية بالمغرب</p>
+    <p>{hijri_title} — {source_txt}</p>
   </div>
   <table>
     <thead>
@@ -1013,7 +1108,7 @@ def build_printable_monthly_html(city_id: str, year: int, month: int) -> str:
       const el = document.getElementById('a4PageContainer');
       const opt = {{
         margin: [4, 4, 4, 4],
-        filename: 'Imsakiya_{city["en"]}_{year}_{month:02d}_A4.pdf',
+        filename: '{pdf_name}',
         image: {{ type: 'jpeg', quality: 0.98 }},
         html2canvas: {{ scale: 2, useCORS: true }},
         jsPDF: {{ unit: 'mm', format: 'a4', orientation: 'portrait' }},
@@ -1101,16 +1196,16 @@ if bot:
                 bot.edit_message_text(text, chat_id, msg_id, reply_markup=kb)
 
             elif data == "send_print_month":
-                now = datetime.now(MOROCCO_TZ)
                 city = CITY_BY_ID.get(user["city_id"], CITY_BY_ID["oujda"])
                 bot.answer_callback_query(call.id, "📥 جاري توليد ملف PDF (صفحة واحدة A4)...")
-                pdf_bytes = generate_single_page_a4_pdf(city["id"], now.year, now.month)
+                month = get_city_month(city["id"])
+                pdf_bytes = generate_single_page_a4_pdf(city["id"])
                 doc = io.BytesIO(pdf_bytes)
-                doc.name = f"Imsakiya_{city['en']}_{now.year}_{now.month:02d}_A4.pdf"
+                doc.name = pdf_filename(city, month)
                 bot.send_document(
                     chat_id,
                     doc,
-                    caption=f"📄 <b>الحصة الشهرية لمواقيت الصلاة (PDF صفحة واحدة A4) — مدينة {city['ar']}</b>",
+                    caption=f"📄 <b>الحصة الشهرية لمواقيت الصلاة — {month['title']} — مدينة {city['ar']}</b>",
                 )
                 return
 
@@ -1456,84 +1551,11 @@ if bot:
 # 24/7 Background Prayer Alarm Scheduler
 # ---------------------------------------------------------------------------
 def scheduler_loop():
+    """Long-running mode (Render / VPS): run the same alarm pass used by the Vercel cron every 30 seconds."""
     logger.info("Prayer alarm scheduler started.")
     while True:
         try:
-            if bot:
-                now = datetime.now(MOROCCO_TZ)
-                now_hm = now.strftime("%H:%M")
-                today_str = now.strftime("%Y-%m-%d")
-                users = get_all_subscribed_users()
-
-                for u in users:
-                    chat_id = u["chat_id"]
-                    city_id = u.get("city_id", "oujda")
-                    city = CITY_BY_ID.get(city_id, CITY_BY_ID["oujda"])
-                    day_data = get_today_times(city_id)
-                    if not day_data:
-                        continue
-                    timings = day_data.get("timings", {})
-
-                    for p_key in ALERT_PRAYERS:
-                        col = f"{p_key.lower()}_alert"
-                        if not u.get(col, 1):
-                            continue
-                        p_time = timings.get(p_key, "")
-                        if ":" not in p_time:
-                            continue
-
-                        if p_time == now_hm:
-                            akey = f"{today_str}_{p_key}_exact"
-                            if mark_alert_sent(chat_id, akey):
-                                msg = (
-                                    f"🕌 <b>حان الآن موعد أذان {PRAYER_NAMES_AR[p_key]}</b>\n"
-                                    f"📍 بتوقيت مدينة <b>{city['ar']}</b> ({p_time})\n"
-                                    f"🤲 <i>اللهم رب هذه الدعوة التامة، والصلاة القائمة، آت محمداً الوسيلة والفضيلة، وابعثه مقاماً محموداً الذي وعدته.</i>"
-                                )
-                                try:
-                                    bot.send_message(chat_id, msg)
-                                except Exception:
-                                    pass
-
-                        pre_mins = u.get("pre_alert_mins", 10)
-                        if pre_mins > 0:
-                            hh, mm = map(int, p_time.split(":"))
-                            p_dt = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
-                            pre_dt = p_dt - timedelta(minutes=pre_mins)
-                            if pre_dt.strftime("%H:%M") == now_hm:
-                                akey = f"{today_str}_{p_key}_pre{pre_mins}"
-                                if mark_alert_sent(chat_id, akey):
-                                    msg = (
-                                        f"⏳ <b>تذكير قبل الصلاة</b>\n"
-                                        f"تبقى <b>{pre_mins} دقائق</b> على أذان <b>{PRAYER_NAMES_AR[p_key]}</b> "
-                                        f"في مدينة {city['ar']} ({p_time})."
-                                    )
-                                    try:
-                                        bot.send_message(chat_id, msg)
-                                    except Exception:
-                                        pass
-
-                    if u.get("adhkar_alerts", 1):
-                        if now_hm == "07:30" and mark_alert_sent(chat_id, f"{today_str}_morning_adhkar"):
-                            try:
-                                bot.send_message(chat_id, "🌅 <b>تذكير:</b> لا تنسَ قراءة أذكار الصباح لحفظ يومك وبركته.")
-                            except Exception:
-                                pass
-                        if now_hm == "17:30" and mark_alert_sent(chat_id, f"{today_str}_evening_adhkar"):
-                            try:
-                                bot.send_message(chat_id, "🌙 <b>تذكير:</b> حان وقت أذكار المساء، ألا بذكر الله تطمئن القلوب.")
-                            except Exception:
-                                pass
-
-                    if u.get("kahf_alert", 1) and now.weekday() == 4 and now_hm == "10:00":
-                        if mark_alert_sent(chat_id, f"{today_str}_kahf"):
-                            try:
-                                bot.send_message(
-                                    chat_id,
-                                    "🕌 <b>جمعة مباركة!</b>\nلا تنسَ قراءة <b>سورة الكهف</b> (برواية ورش عن نافع) والإكثار من الصلاة على النبي ﷺ.",
-                                )
-                            except Exception:
-                                pass
+            _run_alarm_check_once()
         except Exception as e:
             logger.error("Scheduler loop error: %s", e)
         time.sleep(30)
@@ -1609,19 +1631,82 @@ def _send_clean_alert(chat_id: int, text: str) -> bool:
         return False
 
 
-def _run_alarm_check_once() -> dict:
-    """Single pass of the prayer alarm check (works on Vercel via cron-job.org)."""
-    if not bot:
-        return {"ok": False, "reason": "BOT_TOKEN not set"}
-    now = datetime.now(MOROCCO_TZ)
-    now_hm = now.strftime("%H:%M")
-    today_str = now.strftime("%Y-%m-%d")
+ADHAN_DUA = "اللهم رب هذه الدعوة التامة، والصلاة القائمة، آت محمداً الوسيلة والفضيلة، وابعثه مقاماً محموداً الذي وعدته."
+MORNING_ADHKAR_AFTER_FAJR_MIN = 20   # تذكير أذكار الصباح بعد أذان الفجر بـ 20 دقيقة
+EVENING_ADHKAR_AFTER_ASR_MIN = 15    # تذكير أذكار المساء بعد أذان العصر بـ 15 دقيقة
+ALERT_WINDOW_SEC = 300               # the cron may run every 1–5 minutes
 
-    users = get_all_subscribed_users()
+
+def _due(now: datetime, hhmm: str, offset_min: int = 0) -> bool:
+    """True if `now` is within ALERT_WINDOW_SEC after the time hhmm (+offset)."""
+    if not hhmm or ":" not in hhmm:
+        return False
+    hh, mm = map(int, hhmm.split(":"))
+    target = now.replace(hour=hh, minute=mm, second=0, microsecond=0) + timedelta(minutes=offset_min)
+    return 0 <= (now - target).total_seconds() < ALERT_WINDOW_SEC
+
+
+def _collect_alerts(now: datetime, day_row: dict, prefs: dict, city: dict) -> list:
+    """Return [(alert_key, telegram_html, push_title, push_body, push_url)] due right now."""
+    out = []
+    timings = day_row.get("timings", {})
+    today_str = now.strftime("%Y-%m-%d")
+    approx = bool(day_row.get("approx"))
+    note_html = f"\n<i>{APPROX_NOTE}</i>" if approx else ""
+    note_txt = " (توقيت تقريبي)" if approx else ""
+
+    for p_key in ALERT_PRAYERS:
+        if not prefs.get(f"{p_key.lower()}_alert", 1):
+            continue
+        p_time = timings.get(p_key, "")
+        if _due(now, p_time):
+            out.append((
+                f"{today_str}_{p_key}_exact",
+                f"🕌 <b>حان الآن موعد أذان {PRAYER_NAMES_AR[p_key]}</b>\n"
+                f"📍 بتوقيت مدينة <b>{city['ar']}</b> ({p_time})\n"
+                f"🤲 <i>{ADHAN_DUA}</i>{note_html}",
+                f"🕌 حان موعد أذان {PRAYER_NAMES_AR[p_key]}",
+                f"بتوقيت مدينة {city['ar']} ({p_time}){note_txt} — اضغط للاستماع إلى الأذان",
+                f"/?tab=prayers&play_adhan=1&prayer={p_key}",
+            ))
+        pre_mins = int(prefs.get("pre_alert_mins", 10) or 0)
+        if pre_mins > 0 and _due(now, p_time, -pre_mins):
+            out.append((
+                f"{today_str}_{p_key}_pre{pre_mins}",
+                f"⏳ <b>تذكير قبل الصلاة</b>\n"
+                f"تبقى <b>{pre_mins} دقائق</b> على أذان <b>{PRAYER_NAMES_AR[p_key]}</b> "
+                f"في مدينة {city['ar']} ({p_time}).{note_html}",
+                f"⏳ تذكير قبل أذان {PRAYER_NAMES_AR[p_key]}",
+                f"تبقى {pre_mins} دقائق على الأذان في مدينة {city['ar']} ({p_time}){note_txt}.",
+                "/?tab=prayers",
+            ))
+
+    if prefs.get("adhkar_alerts", 1):
+        if _due(now, timings.get("Fajr", ""), MORNING_ADHKAR_AFTER_FAJR_MIN):
+            out.append((f"{today_str}_morning_adhkar",
+                        "🌅 <b>تذكير:</b> حان وقت أذكار الصباح (من بعد الفجر إلى طلوع الشمس).",
+                        "🌅 أذكار الصباح", "حان وقت أذكار الصباح.", "/?tab=adhkar"))
+        if _due(now, timings.get("Asr", ""), EVENING_ADHKAR_AFTER_ASR_MIN):
+            out.append((f"{today_str}_evening_adhkar",
+                        "🌙 <b>تذكير:</b> حان وقت أذكار المساء (من بعد العصر)، ألا بذكر الله تطمئن القلوب.",
+                        "🌙 أذكار المساء", "حان وقت أذكار المساء، ألا بذكر الله تطمئن القلوب.", "/?tab=adhkar"))
+
+    if prefs.get("kahf_alert", 1) and now.weekday() == 4 and _due(now, "10:00"):
+        out.append((f"{today_str}_kahf",
+                    "🕌 <b>جمعة مباركة!</b>\nلا تنسَ قراءة <b>سورة الكهف</b> (برواية ورش عن نافع) والإكثار من الصلاة على النبي ﷺ.",
+                    "🕌 جمعة مباركة — سورة الكهف",
+                    "لا تنسَ قراءة سورة الكهف والإكثار من الصلاة على النبي ﷺ.", "/?tab=quran"))
+    return out
+
+
+def _run_alarm_check_once() -> dict:
+    """Single pass of the prayer alarm check (Vercel cron via cron-job.org, or the 30-second loop)."""
+    now = datetime.now(MOROCCO_TZ)
+    users = get_all_subscribed_users() if bot else []
     # Also support permanent env-var subscribers on Vercel: ALERT_CHAT_IDS="123456:oujda,789012:rabat"
     env_subs = os.environ.get("ALERT_CHAT_IDS", "").strip()
     existing_ids = {u["chat_id"] for u in users}
-    if env_subs:
+    if bot and env_subs:
         for entry in env_subs.split(","):
             entry = entry.strip()
             if not entry:
@@ -1631,136 +1716,44 @@ def _run_alarm_check_once() -> dict:
                 cid = int(parts[0].strip())
                 city_id = parts[1].strip() if len(parts) > 1 and parts[1].strip() in CITY_BY_ID else "oujda"
                 if cid not in existing_ids:
-                    users.append({
-                        "chat_id": cid,
-                        "city_id": city_id,
-                        "alerts_enabled": 1,
-                        "pre_alert_mins": 10,
-                        "adhkar_alerts": 1,
-                        "kahf_alert": 1,
-                        "fajr_alert": 1,
-                        "dhuhr_alert": 1,
-                        "asr_alert": 1,
-                        "maghrib_alert": 1,
-                        "isha_alert": 1,
-                    })
+                    users.append({"chat_id": cid, "city_id": city_id})
                     existing_ids.add(cid)
             except Exception:
                 pass
 
+    rows_by_city = {}
+
+    def row_for(city_id):
+        if city_id not in rows_by_city:
+            rows_by_city[city_id] = get_today_times(city_id)
+        return rows_by_city[city_id]
+
     sent_count = 0
     for u in users:
         chat_id = u["chat_id"]
-        city_id = u.get("city_id", "oujda")
-        city = CITY_BY_ID.get(city_id, CITY_BY_ID["oujda"])
-        day_data = get_today_times(city_id)
-        if not day_data:
+        city = CITY_BY_ID.get(u.get("city_id", "oujda"), CITY_BY_ID["oujda"])
+        day_row = row_for(city["id"])
+        if not day_row:
             continue
-        timings = day_data.get("timings", {})
+        for akey, tg_html, _, _, _ in _collect_alerts(now, day_row, u, city):
+            if mark_alert_sent(chat_id, akey) and _send_clean_alert(chat_id, tg_html):
+                sent_count += 1
 
-        for p_key in ALERT_PRAYERS:
-            if not u.get(f"{p_key.lower()}_alert", 1):
-                continue
-            p_time = timings.get(p_key, "")
-            if ":" not in p_time:
-                continue
-
-            hh, mm = map(int, p_time.split(":"))
-            p_dt = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
-            diff_exact = (now - p_dt).total_seconds()
-            if 0 <= diff_exact < 300 and mark_alert_sent(chat_id, f"{today_str}_{p_key}_exact"):
-                msg = (
-                    f"🕌 <b>حان الآن موعد أذان {PRAYER_NAMES_AR[p_key]}</b>\n"
-                    f"📍 بتوقيت مدينة <b>{city['ar']}</b> ({p_time})\n"
-                    f"🤲 <i>اللهم رب هذه الدعوة التامة، والصلاة القائمة، آت محمداً الوسيلة والفضيلة، وابعثه مقاماً محموداً الذي وعدته.</i>"
-                )
-                if _send_clean_alert(chat_id, msg):
-                    sent_count += 1
-
-            pre_mins = u.get("pre_alert_mins", 10)
-            if pre_mins > 0:
-                pre_dt = p_dt - timedelta(minutes=pre_mins)
-                diff_pre = (now - pre_dt).total_seconds()
-                if 0 <= diff_pre < 300 and mark_alert_sent(chat_id, f"{today_str}_{p_key}_pre{pre_mins}"):
-                    msg = (
-                        f"⏳ <b>تذكير قبل الصلاة</b>\n"
-                        f"تبقى <b>{pre_mins} دقائق</b> على أذان <b>{PRAYER_NAMES_AR[p_key]}</b> "
-                        f"في مدينة {city['ar']} ({p_time})."
-                    )
-                    if _send_clean_alert(chat_id, msg):
-                        sent_count += 1
-
-        if u.get("adhkar_alerts", 1):
-            if now_hm == "07:30" and mark_alert_sent(chat_id, f"{today_str}_morning_adhkar"):
-                if _send_clean_alert(chat_id, "🌅 <b>تذكير:</b> لا تنسَ قراءة أذكار الصباح لحفظ يومك وبركته."):
-                    sent_count += 1
-            if now_hm == "17:30" and mark_alert_sent(chat_id, f"{today_str}_evening_adhkar"):
-                if _send_clean_alert(chat_id, "🌙 <b>تذكير:</b> حان وقت أذكار المساء، ألا بذكر الله تطمئن القلوب."):
-                    sent_count += 1
-
-        if u.get("kahf_alert", 1) and now.weekday() == 4 and now_hm == "10:00":
-            if mark_alert_sent(chat_id, f"{today_str}_kahf"):
-                if _send_clean_alert(
-                    chat_id,
-                    "🕌 <b>جمعة مباركة!</b>\nلا تنسَ قراءة <b>سورة الكهف</b> (برواية ورش عن نافع) والإكثار من الصلاة على النبي ﷺ.",
-                ):
-                    sent_count += 1
-
-    # Also send direct Phone Web Push Notifications to all website/PWA subscribers
+    # Direct phone Web Push notifications for website/PWA subscribers
     push_subs = get_all_webpush_subs()
     push_sent = 0
     for ps in push_subs:
         sid = ps.get("id", "")
-        city_id = ps.get("city_id", "oujda")
-        city = CITY_BY_ID.get(city_id, CITY_BY_ID["oujda"])
-        day_data = get_today_times(city_id)
-        if not day_data:
+        city = CITY_BY_ID.get(ps.get("city_id", "oujda"), CITY_BY_ID["oujda"])
+        day_row = row_for(city["id"])
+        if not day_row:
             continue
-        timings = day_data.get("timings", {})
+        for akey, _, title, body, url in _collect_alerts(now, day_row, ps, city):
+            if mark_alert_sent(f"wp_{sid}", akey) and send_webpush_notification(ps, title, body, url):
+                push_sent += 1
 
-        for p_key in ALERT_PRAYERS:
-            p_time = timings.get(p_key, "")
-            if ":" not in p_time:
-                continue
-            hh, mm = map(int, p_time.split(":"))
-            p_dt = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
-            diff_exact = (now - p_dt).total_seconds()
-            if 0 <= diff_exact < 300 and mark_alert_sent(f"wp_{sid}", f"{today_str}_{p_key}_exact"):
-                if send_webpush_notification(
-                    ps,
-                    f"🕌 حان موعد أذان {PRAYER_NAMES_AR[p_key]}",
-                    f"بتوقيت مدينة {city['ar']} ({p_time}) — اضغط للاستماع إلى الأذان بصوت مؤذنك المفضل",
-                    f"/?tab=prayers&play_adhan=1&prayer={p_key}",
-                ):
-                    push_sent += 1
-
-            pre_mins = int(ps.get("pre_alert_mins", 10))
-            if pre_mins > 0:
-                pre_dt = p_dt - timedelta(minutes=pre_mins)
-                diff_pre = (now - pre_dt).total_seconds()
-                if 0 <= diff_pre < 300 and mark_alert_sent(f"wp_{sid}", f"{today_str}_{p_key}_pre{pre_mins}"):
-                    if send_webpush_notification(
-                        ps,
-                        f"⏳ تذكير قبل أذان {PRAYER_NAMES_AR[p_key]}",
-                        f"تبقى {pre_mins} دقائق على الأذان في مدينة {city['ar']} ({p_time}).",
-                        "/?tab=prayers",
-                    ):
-                        push_sent += 1
-
-        if ps.get("adhkar_alerts", 1):
-            if now_hm == "07:30" and mark_alert_sent(f"wp_{sid}", f"{today_str}_morning_adhkar"):
-                if send_webpush_notification(ps, "🌅 أذكار الصباح", "لا تنسَ قراءة أذكار الصباح لحفظ يومك وبركته.", "/?tab=adhkar"):
-                    push_sent += 1
-            if now_hm == "17:30" and mark_alert_sent(f"wp_{sid}", f"{today_str}_evening_adhkar"):
-                if send_webpush_notification(ps, "🌙 أذكار المساء", "حان وقت أذكار المساء، ألا بذكر الله تطمئن القلوب.", "/?tab=adhkar"):
-                    push_sent += 1
-
-        if ps.get("kahf_alert", 1) and now.weekday() == 4 and now_hm == "10:00":
-            if mark_alert_sent(f"wp_{sid}", f"{today_str}_kahf"):
-                if send_webpush_notification(ps, "🕌 جمعة مباركة — سورة الكهف", "لا تنسَ قراءة سورة الكهف برواية ورش والإكثار من الصلاة على النبي ﷺ.", "/?tab=quran"):
-                    push_sent += 1
-
-    return {"ok": True, "time": now_hm, "tg_users": len(users), "tg_sent": sent_count, "push_users": len(push_subs), "push_sent": push_sent}
+    return {"ok": True, "time": now.strftime("%H:%M"), "tg_users": len(users), "tg_sent": sent_count,
+            "push_users": len(push_subs), "push_sent": push_sent}
 
 
 @app.route("/webhook", methods=["POST"])
@@ -1813,40 +1806,39 @@ def health():
 
 @app.route("/print-monthly")
 def print_monthly():
+    """Printable / PDF timetable of the CURRENT Hijri month (the Ministry publishes one month at a time)."""
     city_id = request.args.get("city", "oujda")
-    now = datetime.now(MOROCCO_TZ)
-    year = int(request.args.get("year", now.year))
-    month = int(request.args.get("month", now.month))
+    if city_id not in CITY_BY_ID:
+        city_id = "oujda"
+    city = CITY_BY_ID[city_id]
     chat_id = request.args.get("chat_id", type=int)
     send_tg = request.args.get("send_tg", "0") == "1"
+    month = get_city_month(city_id)
+    fname = pdf_filename(city, month)
 
     if request.args.get("format") == "pdf":
-        city = CITY_BY_ID.get(city_id, CITY_BY_ID["oujda"])
-        pdf_bytes = generate_single_page_a4_pdf(city_id, year, month)
-        fname = f"Imsakiya_{city['en']}_{year}_{month:02d}_A4.pdf"
+        pdf_bytes = generate_single_page_a4_pdf(city_id)
         return Response(
             pdf_bytes,
             mimetype="application/pdf",
             headers={"Content-Disposition": f'attachment; filename="{fname}"'},
         )
 
-    html_str = build_printable_monthly_html(city_id, year, month)
     if send_tg and chat_id and bot:
         try:
-            city = CITY_BY_ID.get(city_id, CITY_BY_ID["oujda"])
-            pdf_bytes = generate_single_page_a4_pdf(city_id, year, month)
+            pdf_bytes = generate_single_page_a4_pdf(city_id)
             doc = io.BytesIO(pdf_bytes)
-            doc.name = f"Imsakiya_{city['en']}_{year}_{month:02d}_A4.pdf"
+            doc.name = fname
             bot.send_document(
                 chat_id,
                 doc,
-                caption=f"📄 <b>الحصة الشهرية لمواقيت الصلاة (PDF صفحة واحدة A4) — مدينة {city['ar']}</b>",
+                caption=f"📄 <b>الحصة الشهرية لمواقيت الصلاة — {month['title']} — مدينة {city['ar']}</b>",
             )
             return jsonify({"ok": True})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 
-    return Response(html_str, mimetype="text/html; charset=utf-8")
+    return Response(build_printable_monthly_html(city_id), mimetype="text/html; charset=utf-8")
 
 
 @app.route("/api/cities")
@@ -1861,8 +1853,9 @@ def api_prayer_times():
         city_id = "oujda"
     city = CITY_BY_ID[city_id]
     now = datetime.now(MOROCCO_TZ)
-    month_days = fetch_monthly_times(city_id, now.year, now.month)
-    today = next((d for d in month_days if d["day"] == now.day), month_days[0] if month_days else {})
+    month = get_city_month(city_id)
+    today = get_day_row(city_id, now.date(), month)
+    tomorrow = get_day_row(city_id, now.date() + timedelta(days=1), month)
     qibla = calculate_qibla(city["lat"], city["lon"])
     return jsonify(
         {
@@ -1870,8 +1863,12 @@ def api_prayer_times():
             "qibla_angle": qibla,
             "qibla_dir": qibla_direction_ar(qibla),
             "today": today,
-            "monthly": month_days,
+            "tomorrow": tomorrow,
+            "monthly": month["days"],
+            "month_title": month["title"],
+            "source": month["source"],
             "server_now": now.isoformat(),
+            "today_iso": now.date().isoformat(),
             "bot_share_url": get_bot_share_url(),
         }
     )
@@ -1879,12 +1876,39 @@ def api_prayer_times():
 
 @app.route("/api/monthly")
 def api_monthly():
+    """Kept for compatibility: always returns the current month as published by the Ministry."""
     city_id = request.args.get("city", "oujda")
-    now = datetime.now(MOROCCO_TZ)
-    year = int(request.args.get("year", now.year))
-    month = int(request.args.get("month", now.month))
-    days = fetch_monthly_times(city_id, year, month)
-    return jsonify({"city": CITY_BY_ID.get(city_id, CITY_BY_ID["oujda"]), "year": year, "month": month, "days": days})
+    if city_id not in CITY_BY_ID:
+        city_id = "oujda"
+    month = get_city_month(city_id)
+    return jsonify({"city": CITY_BY_ID[city_id], "title": month["title"], "source": month["source"],
+                    "days": month["days"]})
+
+
+@app.route("/api/habous/status")
+def api_habous_status():
+    """Diagnostics: which app cities are linked to a Ministry city, and whether the Ministry's table loads."""
+    today = datetime.now(MOROCCO_TZ).date()
+    linked, unlinked = [], []
+    for c in MOROCCO_CITIES:
+        hid = match_habous_id(c)
+        (linked if hid else unlinked).append({"id": c["id"], "ar": c["ar"], "habous_id": hid})
+    probe_city = request.args.get("city", "oujda")
+    probe = CITY_BY_ID.get(probe_city, CITY_BY_ID["oujda"])
+    hid = match_habous_id(probe)
+    table = habous_month_table(hid, today, force=request.args.get("force") == "1") if hid else None
+    return jsonify({
+        "probe_city": probe["id"],
+        "probe_habous_id": hid,
+        "habous_ok": bool(table),
+        "stale": bool(table and table.get("stale")),
+        "month_title": table["title"] if table else None,
+        "rows": len(table["days"]) if table else 0,
+        "first_day": table["days"][0] if table else None,
+        "source_url": table.get("source_url") if table else None,
+        "linked_cities": len(linked),
+        "unlinked_cities": unlinked,
+    })
 
 
 @app.route("/api/quran/warsh/<int:surah_num>")
@@ -1904,7 +1928,7 @@ def api_content():
             "adhan_voices": ADHAN_VOICES,
             "seerah": SEERAH_DATA,
             "prophets_stories": PROPHETS_STORIES_DATA,
-            "hizb_map": {str(k): {"surah": v[0], "label": v[1]} for k, v in HIZB_SURAH_MAP.items()},
+            "hizb_map": {str(k): {"surah": v[0], "label": v[1], "page": v[2]} for k, v in HIZB_SURAH_MAP.items()},
             "surahs": [{"number": n, "name": name} for n, name in SURAHS_LIST],
         }
     )
@@ -2042,7 +2066,7 @@ def pwa_manifest():
         "id": "/",
         "name": "نور المغرب — مواقيت الصلاة بالمغرب ومصحف ورش",
         "short_name": "نور المغرب",
-        "description": "مواقيت الصلاة الرسمية في كل المدن المغربية، الحصة الشهرية PDF، المصحف المحمدي برواية ورش عن نافع، بوصلة القبلة، الأذكار، والسيرة النبوية.",
+        "description": "مواقيت الصلاة الرسمية في المدن المغربية من موقع وزارة الأوقاف، الحصة الشهرية PDF، المصحف برواية ورش عن نافع، بوصلة القبلة، الأذكار، والسيرة النبوية.",
         "start_url": "/",
         "scope": "/",
         "display": "standalone",
@@ -2063,7 +2087,7 @@ def pwa_manifest():
 
 @app.route("/sw.js")
 def pwa_sw():
-    sw_js = """const CACHE_NAME = 'noor-maghrib-v18';
+    sw_js = """const CACHE_NAME = 'noor-maghrib-v19';
 const ASSETS = ['/', '/manifest.json', '/icon-192.png', '/api/cities', '/api/content'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
