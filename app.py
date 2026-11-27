@@ -1886,6 +1886,38 @@ def api_monthly():
                     "days": month["days"]})
 
 
+@app.route("/api/habous/probe")
+def api_habous_probe():
+    """Temporary diagnostics: read ONE page of the Ministry's site (habous.gov.ma only) and summarize it,
+    to locate where the new portal loads its prayer times from. Safe to delete once the source is fixed."""
+    from urllib.parse import urlparse
+    import re as _re
+    target = request.args.get("url") or ("https://www.habous.gov.ma" + request.args.get("path", "/"))
+    u = urlparse(target)
+    host = (u.hostname or "").lower()
+    if u.scheme != "https" or not (host == "habous.gov.ma" or host.endswith(".habous.gov.ma")):
+        return jsonify({"ok": False, "error": "only https://*.habous.gov.ma is allowed"}), 400
+    try:
+        resp = requests.get(target, headers=habous_service.REQUEST_HEADERS, timeout=(5, 8))
+    except Exception as e:
+        return jsonify({"ok": False, "url": target, "error": f"{type(e).__name__}: {e}"[:400]})
+    text = habous_service._decode_html(resp.content, None)
+    api_like = sorted(set(_re.findall(
+        r"""["'`]((?:https?://[^"'`\s<>]+)|(?:/?[A-Za-z0-9_\-./]*(?:api|json|priere|prière|horaire|mawaqit|salat|ville|city|hijri|times)[A-Za-z0-9_\-./?=&%{}$]*))["'`]""",
+        text, _re.I)))[:150]
+    calls = [" ".join(text[max(0, m.start() - 200): m.end() + 400].split())
+             for m in _re.finditer(r"fetch\s*\(|XMLHttpRequest|\$\.(?:ajax|get|getJSON)|axios", text)][:12]
+    offset = max(0, request.args.get("offset", 0, type=int))
+    return jsonify({
+        "ok": True, "url": resp.url, "status": resp.status_code,
+        "content_type": resp.headers.get("Content-Type", ""), "bytes": len(resp.content),
+        "scripts": _re.findall(r"""<script[^>]+src=["']([^"']+)""", text, _re.I)[:40],
+        "links": _re.findall(r"""href=["']([^"'#][^"']*)""", text, _re.I)[:60],
+        "api_like": api_like, "fetch_calls": calls,
+        "raw_offset": offset, "raw": text[offset: offset + 6000], "raw_total": len(text),
+    })
+
+
 @app.route("/api/habous/status")
 def api_habous_status():
     """Diagnostics: which app cities are linked to a Ministry city, and whether the Ministry's table loads."""
