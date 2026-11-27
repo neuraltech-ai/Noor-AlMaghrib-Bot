@@ -1,16 +1,24 @@
 # -*- coding: utf-8 -*-
 """
 Official Moroccan prayer times and Hijri dates from the Ministry of Habous and Islamic Affairs
-(وزارة الأوقاف والشؤون الإسلامية) — https://habous.gov.ma/prieres/
+(وزارة الأوقاف والشؤون الإسلامية) — https://www.habous.gov.ma
 
-The Ministry publishes, for each of its 191 cities, the timetable of the CURRENT Hijri month
-(«الحصة الشهرية») at:
-    https://habous.gov.ma/prieres/horaire_hijri_2.php?ville=<ID>
-as an HTML table (id="horaire") whose rows are:
-    اليوم | اليوم الهجري | التاريخ الميلادي | الفجر | الشروق | الظهر | العصر | المغرب | العشاء
+Since its 2026 redesign, the Ministry's portal publishes its data as static files, read by its own
+page script (assets/js/prieres.js):
+  • https://www.habous.gov.ma/data/horaires-YYYY-MM.js  — one file per GREGORIAN month:
+      (window.HORAIRES_MOIS=…).push({"annee":2026,"mois":11,"fuseau":"GMT",
+          "cols":["Fajr","Chorouq","Dhuhr","Asr","Maghrib","Ishae"],
+          "villes":[{"c":1,"n":"الرباط","h":[["05:17","06:44",…], …]}, …]})
+      city = numeric code "c" (same IDs as the old /prieres pages); h[d-1] = day d; legal Moroccan time.
+  • https://www.habous.gov.ma/data/hijri.js — the official start date and length of each Hijri month,
+      updated by the Ministry after each moon-sighting announcement:
+      window.HIJRI = { noms: [...], mois: [ { debut: '2026-11-11', mois: 6, annee: 1448, duree: null }, … ] }
 
-This module downloads that page, parses and validates it, and caches the result.
-It uses only the Python standard library + `requests` (no extra dependencies).
+The Hijri date of a day is computed exactly like the Ministry's page does it: latest month whose
+`debut` ≤ day, Hijri day = days since `debut` + 1; beyond `duree` (30 if unknown) → unknown; day 30 of a
+month whose length is not yet announced → uncertain («حسب ثبوت رؤية الهلال»).
+
+Only the Python standard library + `requests` are used.
 """
 
 import re
@@ -25,16 +33,16 @@ import requests
 
 logger = logging.getLogger("noor_bot.habous")
 
-HABOUS_MONTH_URLS = (
-    "https://habous.gov.ma/prieres/horaire_hijri_2.php?ville={hid}",
-    "https://www.habous.gov.ma/prieres/horaire_hijri_2.php?ville={hid}",
-)
-HABOUS_PUBLIC_URL = "https://habous.gov.ma/prieres/horaire_hijri_2.php?ville={hid}"
+HABOUS_BASE = "https://www.habous.gov.ma"
+HIJRI_URL = HABOUS_BASE + "/data/hijri.js"
+TIMES_URL = HABOUS_BASE + "/data/horaires-{y:04d}-{m:02d}.js"
+HABOUS_PUBLIC_URL = HABOUS_BASE + "/?ville={hid}"
+CITY_CODE_ALIAS = {303: 94}   # same alias as the Ministry's own page script
 
 REQUEST_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) "
                   "Chrome/120.0 Mobile Safari/537.36 NoorAlMaghrib/1.0",
-    "Accept": "text/html,application/xhtml+xml",
+    "Accept": "application/javascript,text/javascript,*/*",
     "Accept-Language": "ar,fr;q=0.8",
 }
 
@@ -179,287 +187,19 @@ def match_habous_id(city: dict):
     return None
 
 
-# ---------------------------------------------------------------------------
-# Tabular (arithmetical) Islamic calendar — used ONLY to identify the month/year number of the
-# Ministry's table (taken at mid-month, where it cannot be off by a whole month). Day numbers
-# always come from the Ministry itself.
-# ---------------------------------------------------------------------------
-_ISLAMIC_EPOCH = 1948439.5
-
-
-def _greg_to_jd(d: date) -> float:
-    return d.toordinal() + 1721424.5
-
-
-def _islamic_to_jd(y: int, m: int, d: int) -> float:
-    return d + int(-(-29.5 * (m - 1) // 1)) + (y - 1) * 354 + (3 + 11 * y) // 30 + _ISLAMIC_EPOCH - 1
-
-
-def tabular_hijri(d: date):
-    jd = int(_greg_to_jd(d) - 0.5) + 0.5
-    y = int((30 * (jd - _ISLAMIC_EPOCH) + 10646) // 10631)
-    m = min(12, int(-(-(jd - (29 + _islamic_to_jd(y, 1, 1))) // 29.5)) + 1)
-    m = max(1, m)
-    dd = int(jd - _islamic_to_jd(y, m, 1) + 1)
-    return y, m, dd
-
 
 # ---------------------------------------------------------------------------
-# HTML parsing
+# Download + cache helpers
 # ---------------------------------------------------------------------------
-class _TableCollector(HTMLParser):
-    """Collect every <table> (with attributes) and the text of its rows/cells; tolerant to sloppy HTML."""
-
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self.tables = []
-        self.page_text = []
-        self._stack = []
-        self._row = None
-        self._cell = None
-        self._skip = 0
-
-    def _close_cell(self):
-        if self._cell is not None and self._row is not None:
-            self._row.append(_clean_cell("".join(self._cell)))
-        self._cell = None
-
-    def _close_row(self):
-        self._close_cell()
-        if self._row is not None and self._stack:
-            self.tables[self._stack[-1]]["rows"].append(self._row)
-        self._row = None
-
-    def handle_starttag(self, tag, attrs):
-        tag = tag.lower()
-        if tag in ("script", "style"):
-            self._skip += 1
-        elif tag == "table":
-            self._close_row()
-            self.tables.append({"attrs": {k.lower(): (v or "") for k, v in attrs}, "rows": []})
-            self._stack.append(len(self.tables) - 1)
-        elif tag == "tr" and self._stack:
-            self._close_row()
-            self._row = []
-        elif tag in ("td", "th") and self._stack:
-            if self._row is None:
-                self._row = []
-            self._close_cell()
-            self._cell = []
-        elif tag == "br" and self._cell is not None:
-            self._cell.append(" ")
-
-    def handle_endtag(self, tag):
-        tag = tag.lower()
-        if tag in ("script", "style"):
-            self._skip = max(0, self._skip - 1)
-        elif tag in ("td", "th"):
-            self._close_cell()
-        elif tag == "tr":
-            self._close_row()
-        elif tag == "table" and self._stack:
-            self._close_row()
-            self._stack.pop()
-
-    def handle_data(self, data):
-        if self._skip:
-            return
-        if self._cell is not None:
-            self._cell.append(data)
-        self.page_text.append(data)
-
-
-_HIJRI_NAME_PATTERNS = [
-    (3, r"ربيع\s*(?:الاول|الاولي|اول|1)\b"), (4, r"ربيع\s*(?:الثاني|الثانيه|الاخر|اخر|2)\b"),
-    (5, r"جمادي\s*(?:الاولي|الاول|اولي|1)\b"), (6, r"جمادي\s*(?:الثانيه|الثاني|الاخره|الاخر|2)\b"),
-    (11, r"ذ[وي]\s*القعده"), (12, r"ذ[وي]\s*الحجه"),
-    (1, r"محرم"), (2, r"\bصفر\b"), (7, r"\bرجب\b"), (8, r"شعبان"), (9, r"رمضان"), (10, r"شوال"),
-    # French spellings used on the French version of the page
-    (3, r"rabi[a']?\s*(?:al[- ]?)?(?:awal|aoual|awwal|i)\b"), (4, r"rabi[a']?\s*(?:al[- ]?)?(?:th?ani|akhir|ii)\b"),
-    (5, r"jou?mada\s*(?:al[- ]?)?(?:oula|ula|i)\b"), (6, r"jou?mada\s*(?:al[- ]?)?(?:th?aa?nia|th?ania|akhira|ii)\b"),
-    (11, r"d[ho]u\s*(?:al[- ]?)?(?:qi'?i?da|kaada|qa'?da)"), (12, r"d[ho]u\s*(?:al[- ]?)?(?:hij+a|hijja)"),
-    (1, r"mou?harram"), (7, r"rajab"), (8, r"cha'?a?bane?|sha'?ban"), (9, r"ramad[ah]n"), (10, r"chaou?al|shawwal|chawwal"),
-]
-
-
-def find_hijri_month(text: str):
-    t = normalize_ar(text)
-    for num, pat in _HIJRI_NAME_PATTERNS:
-        if re.search(pat, t):
-            return num
-    return None
-
-
-_GREG_NAME_TO_NUM = {}
-for _n, _names in {
-    1: ["يناير", "janvier", "jan", "january", "كانون الثاني"], 2: ["فبراير", "fevrier", "février", "fev", "fév", "feb", "february"],
-    3: ["مارس", "mars", "mar", "march"], 4: ["ابريل", "أبريل", "avril", "avr", "apr", "april"],
-    5: ["ماي", "مايو", "mai", "may"], 6: ["يونيو", "يونيه", "juin", "jun", "june"],
-    7: ["يوليوز", "يوليو", "يوليه", "juillet", "juil", "jul", "july"], 8: ["غشت", "اغسطس", "أغسطس", "aout", "août", "aug", "august"],
-    9: ["شتنبر", "سبتمبر", "septembre", "sept", "sep", "september"], 10: ["اكتوبر", "أكتوبر", "octobre", "oct", "october"],
-    11: ["نونبر", "نوفمبر", "novembre", "nov", "november"], 12: ["دجنبر", "ديسمبر", "decembre", "décembre", "dec", "déc", "december"],
-}.items():
-    for _nm in _names:
-        _GREG_NAME_TO_NUM[normalize_ar(_nm)] = _n
-
-
-def _parse_greg_cell(cell: str):
-    """Return (day, month_or_None, year_or_None) from cells like «11 نونبر», «11 Nov», «11/11/2026»."""
-    c = _clean_cell(cell)
-    m = re.match(r"^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$", c)
-    if m:
-        y = int(m.group(3))
-        return int(m.group(1)), int(m.group(2)), (y + 2000 if y < 100 else y)
-    m = re.search(r"(\d{1,2})", c)
-    if not m:
-        return None, None, None
-    day = int(m.group(1))
-    rest = normalize_ar(c[m.end():])
-    month = None
-    for word in rest.split():
-        if word in _GREG_NAME_TO_NUM:
-            month = _GREG_NAME_TO_NUM[word]
-            break
-    ym = re.search(r"(20\d{2})", c)
-    return day, month, (int(ym.group(1)) if ym else None)
-
-
-def _decode_html(raw: bytes, declared: str = None) -> str:
-    candidates = []
-    if declared:
-        candidates.append(declared)
-    m = re.search(rb'charset=["\']?([A-Za-z0-9_\-]+)', raw[:4000])
-    if m:
-        candidates.append(m.group(1).decode("ascii", "ignore"))
-    candidates += ["utf-8", "cp1256"]
-    for enc in candidates:
-        try:
-            return raw.decode(enc)
-        except (LookupError, UnicodeDecodeError):
-            continue
-    return raw.decode("utf-8", "replace")
-
-
-class HabousParseError(ValueError):
-    pass
-
-
-def parse_habous_month_html(html: str, today: date) -> dict:
-    """Parse the Ministry's monthly Hijri table. Raises HabousParseError if the page is not as expected."""
-    p = _TableCollector()
-    p.feed(html)
-    p.close()
-
-    def table_rows(tbl):
-        out = []
-        for cells in tbl["rows"]:
-            times_idx = [i for i, c in enumerate(cells) if _norm_time(c)]
-            if len(times_idx) >= 6:
-                out.append((cells, times_idx))
-        return out
-
-    tables = p.tables
-    chosen = next((t for t in tables if t["attrs"].get("id", "").lower() == "horaire"), None)
-    if chosen is None or not table_rows(chosen):
-        chosen = max(tables, key=lambda t: len(table_rows(t)), default=None)
-    if chosen is None:
-        raise HabousParseError("no table found")
-    rows = table_rows(chosen)
-    if len(rows) < 25:
-        raise HabousParseError(f"only {len(rows)} timetable rows found")
-
-    parsed = []
-    for cells, tidx in rows:
-        times = [_norm_time(cells[i]) for i in tidx[:6]]
-        pre = cells[:tidx[0]]
-        hijri_day, greg_cell = None, None
-        for j, c in enumerate(pre):
-            if re.fullmatch(r"\d{1,2}", c) and 1 <= int(c) <= 30:
-                hijri_day = int(c)
-                greg_cell = pre[j + 1] if j + 1 < len(pre) else None
-                break
-        if hijri_day is None:
-            raise HabousParseError(f"no Hijri day in row {cells}")
-        gd, gm, gy = _parse_greg_cell(greg_cell) if greg_cell else (None, None, None)
-        mins = [_to_minutes(t) for t in times]
-        if any(b <= a for a, b in zip(mins, mins[1:])):
-            raise HabousParseError(f"prayer times not increasing in row {cells}")
-        parsed.append({"hijri_day": hijri_day, "gd": gd, "gm": gm, "gy": gy, "times": times})
-
-    # Hijri days must be consecutive (1, 2, 3, …).
-    for a, b in zip(parsed, parsed[1:]):
-        if b["hijri_day"] != a["hijri_day"] + 1:
-            raise HabousParseError("Hijri days are not consecutive")
-
-    # Anchor the Gregorian dates: rows are consecutive days; pick the start date (near today) that
-    # best matches the day numbers printed by the Ministry, using printed month/year when present.
-    best, best_score = None, -1
-    for offset in range(-45, 8):
-        start = today + timedelta(days=offset)
-        score = 0
-        for i, r in enumerate(parsed):
-            d = start + timedelta(days=i)
-            if r["gd"] is not None and r["gd"] == d.day:
-                score += 2
-                if r["gm"] is not None and r["gm"] == d.month:
-                    score += 1
-                if r["gy"] is not None and r["gy"] == d.year:
-                    score += 1
-        if score > best_score:
-            best, best_score = start, score
-    with_day = sum(1 for r in parsed if r["gd"] is not None)
-    if with_day < len(parsed) * 0.8 or best_score < 2 * with_day:
-        raise HabousParseError("Gregorian dates could not be matched")
-
-    # Identify the Hijri month & year: name printed by the Ministry (header/title), cross-checked
-    # with the arithmetical calendar at mid-month.
-    month_start = best - timedelta(days=parsed[0]["hijri_day"] - 1)
-    ty, tm, _ = tabular_hijri(month_start + timedelta(days=14))
-    header_text = " ".join(" ".join(cells) for cells in chosen["rows"] if not any(_norm_time(c) for c in cells))
-    # At mid-month the arithmetical calendar cannot be off by a whole month (it differs from the
-    # observed calendar by 1–2 days at most), so it reliably gives the month number and year.
-    # The month name printed in the Ministry's table header is used as a safety check.
-    h_month, h_year = tm, ty
-    named_in_table = find_hijri_month(header_text)
-    if named_in_table and named_in_table != tm:
-        raise HabousParseError(f"Hijri month name {named_in_table} inconsistent with calendar {tm}")
-
-    days = []
-    for i, r in enumerate(parsed):
-        d = best + timedelta(days=i)
-        days.append({
-            "day": d.day,
-            "date_iso": d.isoformat(),
-            "gregorian": d.strftime("%d-%m-%Y"),
-            "greg_label": f"{d.day} {GREG_MONTHS_MA[d.month]}",
-            "weekday_ar": WEEKDAYS_AR[d.weekday()],
-            "hijri_day": str(r["hijri_day"]),
-            "hijri_month": HIJRI_MONTHS_MA[h_month],
-            "hijri_month_num": h_month,
-            "hijri_year": str(h_year),
-            "timings": dict(zip(PRAYER_KEYS, r["times"])),
-        })
-    return {
-        "hijri_month": HIJRI_MONTHS_MA[h_month],
-        "hijri_month_num": h_month,
-        "hijri_year": str(h_year),
-        "title": f"{HIJRI_MONTHS_MA[h_month]} {h_year} هـ",
-        "days": days,
-    }
-
-
-# ---------------------------------------------------------------------------
-# Fetching + caching
-# ---------------------------------------------------------------------------
-_MEM_CACHE = {}
-LAST_ERROR = {}     # hid -> {"type", "error", "at"} of the last failed attempt (shown on /api/habous/status)
-LAST_FETCH = {}     # hid -> {"url", "status", "bytes", "elapsed", "title", "snippet"} of the last HTTP response
-_FAIL_UNTIL = {}    # after a failed download, wait before retrying (keeps requests fast if the site is down)
+_MEM = {}           # key -> {"value": ..., "fetched_at": ts}
+LAST_ERROR = {}     # resource -> {"type", "error", "at"} (shown on /api/habous/status)
+LAST_FETCH = {}     # resource -> {"url", "status", "bytes", "elapsed", "tls_verified"}
+_FAIL_UNTIL = {}    # resource -> ts (wait before retrying after a failure)
 FAIL_BACKOFF_SEC = 300
 _LOCKS = {}
 _LOCKS_GUARD = threading.Lock()
-_cache_get = None   # optional persistent cache (e.g. Upstash Redis): fn(key) -> str|None
-_cache_set = None   # fn(key, value_str, ttl_seconds) -> None
+_cache_get = None   # optional persistent cache (Upstash Redis): fn(key) -> str|None
+_cache_set = None   # fn(key, value_str, ttl_seconds)
 
 
 def configure_cache(get_fn=None, set_fn=None):
@@ -467,135 +207,286 @@ def configure_cache(get_fn=None, set_fn=None):
     _cache_get, _cache_set = get_fn, set_fn
 
 
-def _lock_for(hid):
+def _lock_for(key):
     with _LOCKS_GUARD:
-        return _LOCKS.setdefault(hid, threading.Lock())
+        return _LOCKS.setdefault(key, threading.Lock())
 
 
-def _table_for_today(table: dict, today: date):
-    iso = today.isoformat()
-    return next((d for d in (table or {}).get("days", []) if d["date_iso"] == iso), None)
+class HabousNotPublished(Exception):
+    """The Ministry has not published this file (HTTP 404)."""
 
 
-def _fresh_enough(table: dict, today: date, now_ts: float) -> bool:
-    row = _table_for_today(table, today)
-    if not row:
-        return False
-    age = now_ts - float(table.get("fetched_at", 0))
-    # Near the end of the Hijri month the Ministry switches to the new month after the moon sighting:
-    # refresh every 30 minutes then; otherwise every 6 hours.
-    max_age = 1800 if int(row["hijri_day"]) >= 28 else 6 * 3600
-    return age < max_age
-
-
-def _page_summary(html: str) -> dict:
-    title = re.search(r"<title[^>]*>(.*?)</title>", html or "", re.S | re.I)
-    text = re.sub(r"<script.*?</script>|<style.*?</style>|<[^>]+>", " ", html or "", flags=re.S | re.I)
-    return {"title": " ".join((title.group(1) if title else "").split())[:120],
-            "snippet": " ".join(text.split())[:300]}
-
-
-def _download(hid: int) -> str:
-    started = time.monotonic()
+def _http_get(resource: str, url: str) -> str:
     last_err = None
-    for i, tmpl in enumerate(HABOUS_MONTH_URLS):
-        if i > 0 and time.monotonic() - started > 4:
+    for verify in (True, False):
+        t0 = time.monotonic()
+        try:
+            resp = requests.get(url, headers=REQUEST_HEADERS, timeout=(4, 7), verify=verify)
+            LAST_FETCH[resource] = {"url": resp.url, "status": resp.status_code, "bytes": len(resp.content),
+                                    "elapsed": round(time.monotonic() - t0, 2), "tls_verified": verify}
+            if resp.status_code == 404:
+                raise HabousNotPublished(url)
+            resp.raise_for_status()
+            return resp.content.decode("utf-8", "replace")
+        except requests.exceptions.SSLError as e:
+            # Some government servers ship an incomplete certificate chain; the data is public and
+            # read-only, and is fully validated before use.
+            last_err = e
+            if verify:
+                try:
+                    import urllib3
+                    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+                except Exception:
+                    pass
+                continue
             break
-        url = tmpl.format(hid=hid)
-        for verify in (True, False):
-            t0 = time.monotonic()
-            try:
-                resp = requests.get(url, headers=REQUEST_HEADERS, timeout=(5, 8), verify=verify)
-                declared = None
-                ctype = resp.headers.get("Content-Type", "")
-                m = re.search(r"charset=([\w\-]+)", ctype)
-                if m:
-                    declared = m.group(1)
-                html = _decode_html(resp.content, declared)
-                LAST_FETCH[hid] = dict({"url": resp.url, "status": resp.status_code, "bytes": len(resp.content),
-                                        "elapsed": round(time.monotonic() - t0, 2), "tls_verified": verify},
-                                       **_page_summary(html))
-                resp.raise_for_status()
-                return html
-            except requests.exceptions.SSLError as e:
-                # Some government servers ship an incomplete certificate chain; the data is public and
-                # read-only, and is validated by the parser before use.
-                last_err = e
-                if verify:
-                    try:
-                        import urllib3
-                        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-                    except Exception:
-                        pass
-                    continue
-                break
-            except Exception as e:
-                last_err = e
-                if hid not in LAST_FETCH or LAST_FETCH[hid].get("url") != url:
-                    LAST_FETCH[hid] = {"url": url, "status": None, "elapsed": round(time.monotonic() - t0, 2),
-                                       "tls_verified": verify}
-                break
-    raise RuntimeError(f"habous download failed: {type(last_err).__name__}: {last_err}")
+        except HabousNotPublished:
+            raise
+        except Exception as e:
+            last_err = e
+            LAST_FETCH.setdefault(resource, {"url": url, "status": None,
+                                             "elapsed": round(time.monotonic() - t0, 2), "tls_verified": verify})
+            break
+    raise RuntimeError(f"{type(last_err).__name__}: {last_err}")
+
+
+def _cached(resource: str, max_age: float, loader, force: bool = False):
+    """Return a fresh cached value, or reload it; on failure keep serving the last good value."""
+    now_ts = time.time()
+    entry = _MEM.get(resource)
+    if entry is None and _cache_get:
+        try:
+            raw = _cache_get(f"noor:habous:v2:{resource}")
+            if raw:
+                entry = json.loads(raw)
+                _MEM[resource] = entry
+        except Exception:
+            entry = None
+    if entry and not force and now_ts - entry["fetched_at"] < max_age:
+        return entry["value"], entry["fetched_at"], False
+    if not force and _FAIL_UNTIL.get(resource, 0) > now_ts:
+        return (entry["value"], entry["fetched_at"], True) if entry else (None, None, True)
+    with _lock_for(resource):
+        e2 = _MEM.get(resource)
+        if e2 and not force and time.time() - e2["fetched_at"] < max_age:
+            return e2["value"], e2["fetched_at"], False
+        try:
+            value = loader()
+            entry = {"value": value, "fetched_at": time.time()}
+            _MEM[resource] = entry
+            _FAIL_UNTIL.pop(resource, None)
+            LAST_ERROR.pop(resource, None)
+            if _cache_set:
+                try:
+                    _cache_set(f"noor:habous:v2:{resource}", json.dumps(entry, ensure_ascii=False, separators=(",", ":")), 40 * 86400)
+                except Exception:
+                    pass
+            return value, entry["fetched_at"], False
+        except Exception as e:
+            logger.error("Habous %s failed: %s", resource, e)
+            LAST_ERROR[resource] = {"type": type(e).__name__, "error": str(e)[:400], "at": time.time()}
+            _FAIL_UNTIL[resource] = time.time() + (1800 if isinstance(e, HabousNotPublished) else FAIL_BACKOFF_SEC)
+            if isinstance(e, HabousNotPublished):
+                # A month not yet published is a valid answer, not a stale one.
+                return None, None, False
+            return (entry["value"], entry["fetched_at"], True) if entry else (None, None, True)
+
+
+# ---------------------------------------------------------------------------
+# Parsers (strict: anything unexpected raises, so wrong data is never shown)
+# ---------------------------------------------------------------------------
+class HabousParseError(ValueError):
+    pass
+
+
+_HIJRI_ENTRY = re.compile(
+    r"""\{\s*["']?debut["']?\s*:\s*["'](\d{4}-\d{2}-\d{2})["']\s*,\s*["']?mois["']?\s*:\s*(\d{1,2})\s*,"""
+    r"""\s*["']?annee["']?\s*:\s*(\d{4})\s*,\s*["']?duree["']?\s*:\s*(null|\d{2})\s*,?\s*\}""")
+
+
+def parse_hijri_js(text: str) -> list:
+    body = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+    body = re.sub(r"(?m)^\s*//.*$", " ", body)
+    months = []
+    for debut, mois, annee, duree in _HIJRI_ENTRY.findall(body):
+        m, y = int(mois), int(annee)
+        d = None if duree == "null" else int(duree)
+        if not (1 <= m <= 12 and 1400 <= y <= 1600) or d not in (None, 29, 30):
+            raise HabousParseError(f"invalid Hijri entry {debut} {mois} {annee} {duree}")
+        datetime.strptime(debut, "%Y-%m-%d")
+        months.append({"debut": debut, "mois": m, "annee": y, "duree": d})
+    if not months:
+        raise HabousParseError("no Hijri month entries found")
+    months.sort(key=lambda x: x["debut"])
+    for a, b in zip(months, months[1:]):   # consecutive months must follow each other
+        gap = (date.fromisoformat(b["debut"]) - date.fromisoformat(a["debut"])).days
+        if gap not in (29, 30) or (a["duree"] and gap != a["duree"]):
+            raise HabousParseError(f"inconsistent Hijri months {a} -> {b}")
+    return months
+
+
+def hijri_for(day: date, months: list):
+    """Hijri date of `day` exactly as computed by the Ministry's page; None if not yet announced."""
+    for e in reversed(months or []):
+        start = date.fromisoformat(e["debut"])
+        if start > day:
+            continue
+        n = (day - start).days + 1
+        limit = e["duree"] or 30
+        if n > limit:
+            return None
+        return {"day": n, "month": e["mois"], "year": e["annee"], "uncertain": e["duree"] is None and n == 30}
+    return None
+
+
+_COL_KEYS = {"fajr": "Fajr", "chorouq": "Sunrise", "chourouq": "Sunrise", "shuruq": "Sunrise", "sunrise": "Sunrise",
+             "dhuhr": "Dhuhr", "dohr": "Dhuhr", "asr": "Asr", "maghrib": "Maghrib", "ishae": "Isha", "isha": "Isha"}
+
+
+def parse_times_js(text: str, year: int, month: int) -> dict:
+    i = text.find(".push(")
+    j = text.rfind("}")
+    if i < 0 or j < 0:
+        raise HabousParseError("unexpected times file format")
+    data = json.loads(text[text.index("{", i): j + 1])
+    if int(data.get("annee", 0)) != year or int(data.get("mois", 0)) != month:
+        raise HabousParseError(f"file is for {data.get('annee')}-{data.get('mois')}, expected {year}-{month}")
+    cols = [_COL_KEYS.get(str(c).strip().lower()) for c in data.get("cols", [])]
+    if sorted(c for c in cols if c) != sorted(PRAYER_KEYS) or len(cols) != 6:
+        raise HabousParseError(f"unexpected columns {data.get('cols')}")
+    order = [cols.index(k) for k in PRAYER_KEYS]
+    ndays = (date(year + (month == 12), month % 12 + 1, 1) - date(year, month, 1)).days
+    villes, names = {}, {}
+    for v in data.get("villes", []):
+        rows = []
+        for r in v.get("h", []):
+            if len(r) != 6:
+                raise HabousParseError(f"bad row for city {v.get('c')}")
+            t = [_norm_time(r[k]) for k in order]
+            if None in t:
+                raise HabousParseError(f"bad time for city {v.get('c')}: {r}")
+            mins = [_to_minutes(x) for x in t]
+            if any(b <= a for a, b in zip(mins, mins[1:])):
+                raise HabousParseError(f"times not increasing for city {v.get('c')}: {r}")
+            rows.append(t)
+        if rows and len(rows) != ndays:
+            raise HabousParseError(f"city {v.get('c')} has {len(rows)} days, expected {ndays}")
+        villes[str(int(v["c"]))] = rows
+        names[str(int(v["c"]))] = str(v.get("n", ""))
+    if len(villes) < 50:
+        raise HabousParseError(f"only {len(villes)} cities in file")
+    return {"annee": year, "mois": month, "fuseau": data.get("fuseau", ""), "villes": villes, "names": names}
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+def load_hijri(force: bool = False):
+    value, fetched_at, stale = _cached("hijri", 1800, lambda: parse_hijri_js(_http_get("hijri", HIJRI_URL)), force)
+    return value, stale
+
+
+def load_times(year: int, month: int, today: date, force: bool = False):
+    key = f"times-{year:04d}-{month:02d}"
+    current = (year, month) == (today.year, today.month)
+    max_age = 6 * 3600 if current else 3 * 86400
+    value, fetched_at, stale = _cached(
+        key, max_age, lambda: parse_times_js(_http_get(key, TIMES_URL.format(y=year, m=month)), year, month), force)
+    return value, stale
+
+
+def _city_code(times: dict, hid: int):
+    code = str(CITY_CODE_ALIAS.get(hid, hid))
+    if code in times["villes"]:
+        return code
+    want = normalize_ar(HABOUS_CITIES.get(hid, ""))
+    for c, n in times["names"].items():
+        if want and normalize_ar(n) == want:
+            return c
+    return None
+
+
+def _row(d: date, t6: list, hij) -> dict:
+    return {
+        "day": d.day,
+        "date_iso": d.isoformat(),
+        "gregorian": d.strftime("%d-%m-%Y"),
+        "greg_label": f"{d.day} {GREG_MONTHS_MA[d.month]}",
+        "weekday_ar": WEEKDAYS_AR[d.weekday()],
+        "hijri_day": str(hij["day"]) if hij else "",
+        "hijri_month": HIJRI_MONTHS_MA[hij["month"]] if hij else "",
+        "hijri_month_num": hij["month"] if hij else 0,
+        "hijri_year": str(hij["year"]) if hij else "",
+        "hijri_uncertain": bool(hij and hij["uncertain"]),
+        "timings": dict(zip(PRAYER_KEYS, t6)),
+    }
+
+
+def official_day(hid: int, day: date, today: date = None):
+    """One day's official row (times + Hijri date), or None if not published."""
+    today = today or day
+    times, _ = load_times(day.year, day.month, today)
+    if not times:
+        return None
+    code = _city_code(times, hid)
+    rows = times["villes"].get(code) if code else None
+    if not rows or day.day > len(rows):
+        return None
+    months, _ = load_hijri()
+    return _row(day, rows[day.day - 1], hijri_for(day, months))
 
 
 def get_month_table(hid: int, today: date, force: bool = False):
-    """Return the Ministry's current Hijri-month table for city `hid`, or None if unavailable.
+    """Current Hijri month («الحصة الشهرية») for Ministry city `hid`, or None if unavailable.
 
-    The returned dict has: title, hijri_month, hijri_year, days[], source_url, fetched_at, stale (bool).
+    Returns: title, hijri_month, hijri_month_num, hijri_year, days[], source_url, fetched_at, stale, city_ar.
     """
     if not hid:
         return None
-    now_ts = time.time()
-    key = f"noor:habous:v1:{hid}"
+    months, hijri_stale = load_hijri(force)
+    cur = hijri_for(today, months) if months else None
+    if cur:
+        entry = next(e for e in months if e["mois"] == cur["month"] and e["annee"] == cur["year"]
+                     and date.fromisoformat(e["debut"]) <= today)
+        start = date.fromisoformat(entry["debut"])
+        dates = [start + timedelta(days=i) for i in range(entry["duree"] or 30)]
+        title = f"{HIJRI_MONTHS_MA[cur['month']]} {cur['year']} هـ"
+    else:
+        # Hijri month not announced yet (or hijri.js unavailable): show the official Gregorian month.
+        first = today.replace(day=1)
+        nxt = date(first.year + (first.month == 12), first.month % 12 + 1, 1)
+        dates = [first + timedelta(days=i) for i in range((nxt - first).days)]
+        title = f"شهر {GREG_MONTHS_MA[today.month]} {today.year} م"
 
-    cached = _MEM_CACHE.get(hid)
-    if cached is None and _cache_get:
-        try:
-            raw = _cache_get(key)
-            if raw:
-                cached = json.loads(raw)
-                _MEM_CACHE[hid] = cached
-        except Exception:
-            cached = None
-    if cached and not force and _fresh_enough(cached, today, now_ts):
-        return cached
+    stale = bool(hijri_stale)
+    loaded = {}
+    days = []
+    for d in dates:
+        ym = (d.year, d.month)
+        if ym not in loaded:
+            loaded[ym] = load_times(d.year, d.month, today, force)
+        times, t_stale = loaded[ym]
+        if not times:
+            continue
+        stale = stale or bool(t_stale)
+        code = _city_code(times, hid)
+        rows = times["villes"].get(code) if code else None
+        if not rows or d.day > len(rows):
+            continue
+        days.append(_row(d, rows[d.day - 1], hijri_for(d, months) if months else None))
 
-    def _stale_or_none():
-        if cached and _table_for_today(cached, today):
-            stale = dict(cached)
-            stale["stale"] = True
-            return stale
+    if not any(r["date_iso"] == today.isoformat() for r in days):
         return None
-
-    if not force and _FAIL_UNTIL.get(hid, 0) > now_ts:
-        return _stale_or_none()
-
-    with _lock_for(hid):
-        cached2 = _MEM_CACHE.get(hid)  # another request may have refreshed it while we waited
-        if cached2 and not force and _fresh_enough(cached2, today, time.time()):
-            return cached2
-        try:
-            html = _download(hid)
-            table = parse_habous_month_html(html, today)
-            table.update({
-                "hid": hid,
-                "city_ar": HABOUS_CITIES.get(hid, ""),
-                "source_url": HABOUS_PUBLIC_URL.format(hid=hid),
-                "fetched_at": now_ts,
-                "stale": False,
-            })
-            _MEM_CACHE[hid] = table
-            _FAIL_UNTIL.pop(hid, None)
-            LAST_ERROR.pop(hid, None)
-            if _cache_set:
-                try:
-                    _cache_set(key, json.dumps(table, ensure_ascii=False), 35 * 86400)
-                except Exception:
-                    pass
-            return table
-        except Exception as e:
-            logger.error("Habous fetch/parse failed for city %s: %s", hid, e)
-            LAST_ERROR[hid] = {"type": type(e).__name__, "error": str(e)[:400], "at": time.time()}
-            _FAIL_UNTIL[hid] = time.time() + FAIL_BACKOFF_SEC
-            # Keep serving the last official table we have, as long as it still covers today.
-            return _stale_or_none()
+    return {
+        "title": title,
+        "hijri_month": HIJRI_MONTHS_MA[cur["month"]] if cur else "",
+        "hijri_month_num": cur["month"] if cur else 0,
+        "hijri_year": str(cur["year"]) if cur else "",
+        "days": days,
+        "hid": hid,
+        "city_ar": HABOUS_CITIES.get(hid, ""),
+        "source_url": HABOUS_PUBLIC_URL.format(hid=hid),
+        "fetched_at": max((v["fetched_at"] for k, v in _MEM.items()), default=time.time()),
+        "stale": stale,
+        "hijri_known": bool(cur),
+    }

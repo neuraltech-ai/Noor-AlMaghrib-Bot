@@ -542,6 +542,7 @@ def get_city_month(city_id: str) -> dict:
                 "url": table.get("source_url", ""),
                 "habous_city": table.get("city_ar", ""),
                 "stale": bool(table.get("stale")),
+                "hijri_known": bool(table.get("hijri_known")),
                 "fetched_at": table.get("fetched_at"),
             },
         }
@@ -563,6 +564,15 @@ def get_day_row(city_id: str, day=None, month: dict = None) -> dict:
     if row:
         return row
     city = CITY_BY_ID.get(city_id) or CITY_BY_ID["oujda"]
+    hid = match_habous_id(city)
+    if hid:
+        try:
+            official = habous_service.official_day(hid, day, datetime.now(MOROCCO_TZ).date())
+        except Exception as e:
+            logger.error("official_day failed: %s", e)
+            official = None
+        if official:
+            return dict(official, approx=False)
     days = fetch_aladhan_month(city["id"], day.year, day.month)
     return next((d for d in days if d.get("date_iso") == iso), {})
 
@@ -705,6 +715,22 @@ def main_menu_markup(chat_id: int = None):
 APPROX_NOTE = "⚠️ توقيت تقريبي: تعذّر الوصول إلى موقع وزارة الأوقاف، يُرجى التحقق من الجدول الرسمي."
 
 
+def hijri_label(row: dict) -> str:
+    """«17 جمادى الثانية 1448 هـ», «30 … (حسب ثبوت رؤية الهلال)», or «غير معلن بعد»."""
+    if not row.get("hijri_day"):
+        return "التاريخ الهجري: غير معلن حالياً"
+    txt = f"{row['hijri_day']} {row['hijri_month']} {row['hijri_year']} هـ"
+    if row.get("hijri_uncertain"):
+        txt += " (أو فاتح الشهر الموالي حسب ثبوت رؤية الهلال)"
+    return txt
+
+
+def hijri_cell(row: dict) -> str:
+    if not row.get("hijri_day"):
+        return "—"
+    return f"{row['hijri_day']}{'؟' if row.get('hijri_uncertain') else ''} {row['hijri_month']}"
+
+
 def source_line(row: dict) -> str:
     if row.get("approx"):
         return f"<i>{APPROX_NOTE}</i>"
@@ -720,7 +746,7 @@ def format_today_message(user: dict) -> str:
 
     t = day_data["timings"]
     _, next_ar, next_t, rem_str = get_next_prayer(t, now)
-    hijri_str = f"{day_data['weekday_ar']} {day_data['hijri_day']} {day_data['hijri_month']} {day_data['hijri_year']} هـ"
+    hijri_str = f"{day_data['weekday_ar']} {hijri_label(day_data)}"
     if day_data.get("approx"):
         hijri_str += " (تقريبي)"
 
@@ -763,7 +789,7 @@ def format_month_chunk(city_id: str, chunk_idx: int) -> tuple:
         t = d["timings"]
         mark = " ◀" if d.get("date_iso") == today_iso else ""
         lines.append(
-            f"<b>{d['hijri_day']} {d['hijri_month']} — {d.get('weekday_ar', '')} {d.get('greg_label', '')}{mark}</b>\n"
+            f"<b>{hijri_cell(d)} — {d.get('weekday_ar', '')} {d.get('greg_label', '')}{mark}</b>\n"
             f"<code>{t['Fajr']} |{t['Sunrise']} |{t['Dhuhr']} |{t['Asr']} |{t['Maghrib']} |{t['Isha']}</code>"
         )
     lines.append(source_line({"approx": month["source"]["approx"]}))
@@ -1011,7 +1037,7 @@ def generate_single_page_a4_pdf(city_id: str) -> bytes:
         vals = [
             shape_ar(str(d["weekday_ar"])),
             shape_ar(str(d.get("greg_label", d["day"]))),
-            shape_ar(f"{d['hijri_day']} {d['hijri_month']}"),
+            shape_ar(hijri_cell(d)),
             t["Fajr"],
             t["Sunrise"],
             t["Dhuhr"],
@@ -1048,7 +1074,7 @@ def build_printable_monthly_html(city_id: str) -> str:
             f"<tr>"
             f"<td><b>{d['weekday_ar']}</b></td>"
             f"<td>{d.get('greg_label', d['day'])}</td>"
-            f"<td>{d['hijri_day']} {d['hijri_month']}</td>"
+            f"<td>{hijri_cell(d)}</td>"
             f"<td>{t['Fajr']}</td>"
             f"<td>{t['Sunrise']}</td>"
             f"<td>{t['Dhuhr']}</td>"
@@ -1886,38 +1912,6 @@ def api_monthly():
                     "days": month["days"]})
 
 
-@app.route("/api/habous/probe")
-def api_habous_probe():
-    """Temporary diagnostics: read ONE page of the Ministry's site (habous.gov.ma only) and summarize it,
-    to locate where the new portal loads its prayer times from. Safe to delete once the source is fixed."""
-    from urllib.parse import urlparse
-    import re as _re
-    target = request.args.get("url") or ("https://www.habous.gov.ma" + request.args.get("path", "/"))
-    u = urlparse(target)
-    host = (u.hostname or "").lower()
-    if u.scheme != "https" or not (host == "habous.gov.ma" or host.endswith(".habous.gov.ma")):
-        return jsonify({"ok": False, "error": "only https://*.habous.gov.ma is allowed"}), 400
-    try:
-        resp = requests.get(target, headers=habous_service.REQUEST_HEADERS, timeout=(5, 8))
-    except Exception as e:
-        return jsonify({"ok": False, "url": target, "error": f"{type(e).__name__}: {e}"[:400]})
-    text = habous_service._decode_html(resp.content, None)
-    api_like = sorted(set(_re.findall(
-        r"""["'`]((?:https?://[^"'`\s<>]+)|(?:/?[A-Za-z0-9_\-./]*(?:api|json|priere|prière|horaire|mawaqit|salat|ville|city|hijri|times)[A-Za-z0-9_\-./?=&%{}$]*))["'`]""",
-        text, _re.I)))[:150]
-    calls = [" ".join(text[max(0, m.start() - 200): m.end() + 400].split())
-             for m in _re.finditer(r"fetch\s*\(|XMLHttpRequest|\$\.(?:ajax|get|getJSON)|axios", text)][:12]
-    offset = max(0, request.args.get("offset", 0, type=int))
-    return jsonify({
-        "ok": True, "url": resp.url, "status": resp.status_code,
-        "content_type": resp.headers.get("Content-Type", ""), "bytes": len(resp.content),
-        "scripts": _re.findall(r"""<script[^>]+src=["']([^"']+)""", text, _re.I)[:40],
-        "links": _re.findall(r"""href=["']([^"'#][^"']*)""", text, _re.I)[:60],
-        "api_like": api_like, "fetch_calls": calls,
-        "raw_offset": offset, "raw": text[offset: offset + 6000], "raw_total": len(text),
-    })
-
-
 @app.route("/api/habous/status")
 def api_habous_status():
     """Diagnostics: which app cities are linked to a Ministry city, and whether the Ministry's table loads."""
@@ -1941,8 +1935,10 @@ def api_habous_status():
         "source_url": table.get("source_url") if table else None,
         "linked_cities": len(linked),
         "unlinked_cities": unlinked,
-        "last_error": habous_service.LAST_ERROR.get(hid),
-        "last_fetch": habous_service.LAST_FETCH.get(hid),
+        "hijri_known": bool(table and table.get("hijri_known")),
+        "hijri_months": (habous_service.load_hijri()[0] or [])[-3:],
+        "last_errors": habous_service.LAST_ERROR,
+        "last_fetches": habous_service.LAST_FETCH,
     })
 
 

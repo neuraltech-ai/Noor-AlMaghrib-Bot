@@ -889,8 +889,7 @@
       if (data.today && data.today.timings) {
         todayTimings = data.today.timings;
         document.getElementById('headerHijri').innerText =
-          `${data.today.weekday_ar} ${data.today.hijri_day} ${data.today.hijri_month} ${data.today.hijri_year} هـ` +
-          (data.today.approx ? ' (تقريبي)' : '');
+          hijriHeader(data.today) + (data.today.approx ? ' (تقريبي)' : '');
         renderTodayGrid(data.today.timings);
         updateCountdown();
       }
@@ -908,7 +907,7 @@
         <tr style="background:${idx % 2 === 0 ? '#ffffff' : '#f1f5f9'};">
           <td style="padding:2.2px; border:1px solid #cbd5e1; font-weight:700;">${d.weekday_ar}</td>
           <td style="padding:2.2px; border:1px solid #cbd5e1;">${d.greg_label || d.day}</td>
-          <td style="padding:2.2px; border:1px solid #cbd5e1;">${d.hijri_day} ${d.hijri_month}</td>
+          <td style="padding:2.2px; border:1px solid #cbd5e1;">${hijriCell(d)}</td>
           <td style="padding:2.2px; border:1px solid #cbd5e1; font-family:monospace;">${d.timings.Fajr}</td>
           <td style="padding:2.2px; border:1px solid #cbd5e1; font-family:monospace;">${d.timings.Sunrise}</td>
           <td style="padding:2.2px; border:1px solid #cbd5e1; font-family:monospace;">${d.timings.Dhuhr}</td>
@@ -1035,7 +1034,7 @@
           <tr class="${isToday ? 'bg-amber-500/20 font-bold text-amber-200' : 'hover:bg-emerald-900/30'}">
             <td class="py-1.5 px-1.5 text-amber-200 font-semibold whitespace-nowrap">${d.weekday_ar || ''}</td>
             <td class="py-1.5 px-1 text-white whitespace-nowrap">${d.greg_label || d.day}</td>
-            <td class="py-1.5 px-1 text-emerald-200/85 whitespace-nowrap">${d.hijri_day} ${d.hijri_month}</td>
+            <td class="py-1.5 px-1 text-emerald-200/85 whitespace-nowrap">${hijriCell(d)}</td>
             <td class="py-1.5 px-1 font-mono">${d.timings.Fajr}</td>
             <td class="py-1.5 px-1 font-mono text-amber-200/90">${d.timings.Sunrise}</td>
             <td class="py-1.5 px-1 font-mono">${d.timings.Dhuhr}</td>
@@ -1087,6 +1086,17 @@
       const modal = document.getElementById('adhanCallModal');
       modal.classList.add('hidden');
       modal.classList.remove('flex');
+    }
+
+    // التاريخ الهجري كما تعلنه وزارة الأوقاف: «30؟» لليوم 30 قبل إعلان رؤية الهلال، و«—» قبل إعلان الشهر.
+    function hijriCell(d) {
+      if (!d.hijri_day) return '—';
+      return `${d.hijri_day}${d.hijri_uncertain ? '؟' : ''} ${d.hijri_month}`;
+    }
+    function hijriHeader(d) {
+      if (!d.hijri_day) return `${d.weekday_ar} — التاريخ الهجري غير معلن حالياً`;
+      return `${d.weekday_ar} ${d.hijri_day} ${d.hijri_month} ${d.hijri_year} هـ` +
+        (d.hijri_uncertain ? ' (أو فاتح الشهر الموالي حسب ثبوت الرؤية)' : '');
     }
 
     function localISODate(d) {
