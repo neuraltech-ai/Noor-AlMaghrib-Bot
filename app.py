@@ -38,6 +38,7 @@ from islamic_content import (
     SEERAH_DATA,
     PROPHETS_STORIES_DATA,
 )
+import habous_service
 from habous_service import (
     get_month_table as habous_month_table,
     match_habous_id,
@@ -1908,6 +1909,8 @@ def api_habous_status():
         "source_url": table.get("source_url") if table else None,
         "linked_cities": len(linked),
         "unlinked_cities": unlinked,
+        "last_error": habous_service.LAST_ERROR.get(hid),
+        "last_fetch": habous_service.LAST_FETCH.get(hid),
     })
 
 

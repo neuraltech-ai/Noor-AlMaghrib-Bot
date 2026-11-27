@@ -82,6 +82,14 @@ HABOUS_CITY_OVERRIDES = {
     "rabat": 1, "sale": 1, "salé": 1, "casablanca": 58, "oujda": 31, "fes": 81, "fez": 81,
     "meknes": 99, "marrakech": 104, "marrakesh": 104, "tangier": 14, "tanger": 14, "agadir": 117,
     "tetouan": 15, "kenitra": 7, "nador": 39,
+    # Same cities, spelled differently in the Ministry's list:
+    "guercif": 35,         # جرسيف = كرسيف
+    "figuig": 33,          # فجيج = فكيك
+    "tiznit": 119,         # تيزنيت = تزنيت
+    "ifrane": 100,         # إفران = يفرن
+    "fqih_ben_salah": 75,  # الفقيه بن صالح = الفقيه بنصالح
+    # Not published separately by the Ministry; nearest official city (≈10 km):
+    "temara": 1,           # تمارة -> الرباط
 }
 
 HIJRI_MONTHS_MA = {
@@ -444,6 +452,8 @@ def parse_habous_month_html(html: str, today: date) -> dict:
 # Fetching + caching
 # ---------------------------------------------------------------------------
 _MEM_CACHE = {}
+LAST_ERROR = {}     # hid -> {"type", "error", "at"} of the last failed attempt (shown on /api/habous/status)
+LAST_FETCH = {}     # hid -> {"url", "status", "bytes", "elapsed", "title", "snippet"} of the last HTTP response
 _FAIL_UNTIL = {}    # after a failed download, wait before retrying (keeps requests fast if the site is down)
 FAIL_BACKOFF_SEC = 300
 _LOCKS = {}
@@ -478,23 +488,35 @@ def _fresh_enough(table: dict, today: date, now_ts: float) -> bool:
     return age < max_age
 
 
+def _page_summary(html: str) -> dict:
+    title = re.search(r"<title[^>]*>(.*?)</title>", html or "", re.S | re.I)
+    text = re.sub(r"<script.*?</script>|<style.*?</style>|<[^>]+>", " ", html or "", flags=re.S | re.I)
+    return {"title": " ".join((title.group(1) if title else "").split())[:120],
+            "snippet": " ".join(text.split())[:300]}
+
+
 def _download(hid: int) -> str:
     started = time.monotonic()
     last_err = None
     for i, tmpl in enumerate(HABOUS_MONTH_URLS):
-        if i > 0 and time.monotonic() - started > 3.5:
+        if i > 0 and time.monotonic() - started > 4:
             break
         url = tmpl.format(hid=hid)
         for verify in (True, False):
+            t0 = time.monotonic()
             try:
-                resp = requests.get(url, headers=REQUEST_HEADERS, timeout=(3.5, 6), verify=verify)
-                resp.raise_for_status()
+                resp = requests.get(url, headers=REQUEST_HEADERS, timeout=(5, 8), verify=verify)
                 declared = None
                 ctype = resp.headers.get("Content-Type", "")
                 m = re.search(r"charset=([\w\-]+)", ctype)
                 if m:
                     declared = m.group(1)
-                return _decode_html(resp.content, declared)
+                html = _decode_html(resp.content, declared)
+                LAST_FETCH[hid] = dict({"url": resp.url, "status": resp.status_code, "bytes": len(resp.content),
+                                        "elapsed": round(time.monotonic() - t0, 2), "tls_verified": verify},
+                                       **_page_summary(html))
+                resp.raise_for_status()
+                return html
             except requests.exceptions.SSLError as e:
                 # Some government servers ship an incomplete certificate chain; the data is public and
                 # read-only, and is validated by the parser before use.
@@ -509,8 +531,11 @@ def _download(hid: int) -> str:
                 break
             except Exception as e:
                 last_err = e
+                if hid not in LAST_FETCH or LAST_FETCH[hid].get("url") != url:
+                    LAST_FETCH[hid] = {"url": url, "status": None, "elapsed": round(time.monotonic() - t0, 2),
+                                       "tls_verified": verify}
                 break
-    raise RuntimeError(f"habous download failed: {last_err}")
+    raise RuntimeError(f"habous download failed: {type(last_err).__name__}: {last_err}")
 
 
 def get_month_table(hid: int, today: date, force: bool = False):
@@ -561,6 +586,7 @@ def get_month_table(hid: int, today: date, force: bool = False):
             })
             _MEM_CACHE[hid] = table
             _FAIL_UNTIL.pop(hid, None)
+            LAST_ERROR.pop(hid, None)
             if _cache_set:
                 try:
                     _cache_set(key, json.dumps(table, ensure_ascii=False), 35 * 86400)
@@ -569,6 +595,7 @@ def get_month_table(hid: int, today: date, force: bool = False):
             return table
         except Exception as e:
             logger.error("Habous fetch/parse failed for city %s: %s", hid, e)
+            LAST_ERROR[hid] = {"type": type(e).__name__, "error": str(e)[:400], "at": time.time()}
             _FAIL_UNTIL[hid] = time.time() + FAIL_BACKOFF_SEC
             # Keep serving the last official table we have, as long as it still covers today.
             return _stale_or_none()
